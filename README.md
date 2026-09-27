@@ -44,10 +44,11 @@ flowchart LR
 
 - **Grounded answers with receipts**: every answer lists its source passages with match scores
 - **Honest refusals**: asks outside your documents get *"I couldn't find that in your documents."*
+- **Suggested questions from your own documents**: on upload, Gemini writes questions the PDF actually answers; shown as chips, plus "ask next" follow-ups after each answer drawn from the documents it cited
 - **Scroll-driven landing page** that animates the whole pipeline, plus a live "try it" box wired to the API
 - **Chat app** with drag-and-drop upload, evidence panel with keyword highlighting, delete / clear library
 - **Robust API**: clear errors for scanned or corrupt PDFs, AI-service failures (502), and invalid input (422)
-- **Tested & containerised**: 21 pytest tests (Gemini is faked, so tests run offline), Docker image, GitHub Actions CI
+- **Tested & containerised**: 32 pytest tests (Gemini is faked, so tests run offline), Docker image, GitHub Actions CI
 
 ![App](docs/app.jpg)
 
@@ -88,6 +89,7 @@ Vectors persist in the `chroma-data` volume across restarts.
 | `POST` | `/api/upload` | Upload a PDF → extract, chunk, embed, store |
 | `GET` | `/api/ask?q=…&top_k=5` | Grounded answer + ranked source passages |
 | `GET` | `/api/search?q=…` | Raw similarity search (no LLM) |
+| `GET` | `/api/suggestions?limit=6` | Questions generated from your documents (cached per document) |
 | `GET` | `/api/documents` | List documents in the library |
 | `DELETE` | `/api/documents/{id}` | Remove a document and its passages |
 | `DELETE` | `/api/reset` | Clear the whole library |
@@ -104,7 +106,8 @@ app/
 └── core/
     ├── document_processor.py  # PDF → text → overlapping chunks
     ├── embeddings.py          # Gemini embedding client (batched)
-    ├── vector_store.py        # ChromaDB: add, search, list, delete
+    ├── vector_store.py        # ChromaDB: add, search, list, delete, stored questions
+    ├── suggestions.py         # Gemini-written questions each document can answer
     └── rag_chain.py           # Retrieve → build grounded prompt → answer
 public/
 ├── index.html               # Scroll-driven landing page
@@ -113,6 +116,7 @@ public/
 tests/
 ├── test_chunking.py         # Chunking contract: overlap, order, counts
 ├── test_api.py              # End-to-end API incl. every error path
+├── test_suggestions.py      # Question parsing, storage, caching, failure handling
 └── conftest.py              # Fake Gemini client for offline tests
 .github/workflows/ci.yml     # Lint → test → Docker build → smoke test → publish
 ```
@@ -122,7 +126,7 @@ tests/
 Every push and pull request runs **GitHub Actions**:
 
 1. **Lint** with `ruff`
-2. **Test** with `pytest` (21 tests, Gemini faked, no API key or cost)
+2. **Test** with `pytest` (32 tests, Gemini faked, no API key or cost)
 3. **Build** the Docker image and **smoke-test** the running container
 4. On `main`: **publish** the image to GitHub Container Registry (`ghcr.io/aryan22514/rag-chatbot`)
 

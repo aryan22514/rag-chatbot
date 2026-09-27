@@ -1,3 +1,5 @@
+import json
+
 import chromadb
 
 from app.config import settings
@@ -102,3 +104,41 @@ class VectorStore:
             metadata={"hnsw:space": "cosine"},
         )
         return count
+
+    # ── suggested questions ─────────────────────────────────────────
+    # Stored as JSON on each document's first chunk, so deleting the
+    # document (or resetting the library) removes them automatically.
+
+    def _first_chunk(self, document_id: str) -> dict:
+        return self.collection.get(
+            where={"$and": [{"document_id": document_id}, {"chunk_index": 0}]},
+            include=["metadatas"],
+        )
+
+    def set_questions(self, document_id: str, questions: list[str]) -> None:
+        first = self._first_chunk(document_id)
+        if first["ids"]:
+            self.collection.update(
+                ids=first["ids"][:1],
+                metadatas=[{"questions": json.dumps(questions)}],
+            )
+
+    def get_questions(self, document_id: str) -> list[str] | None:
+        """Stored questions, or None if they were never generated."""
+        first = self._first_chunk(document_id)
+        if not first["ids"]:
+            return None
+        raw = first["metadatas"][0].get("questions")
+        return json.loads(raw) if raw else None
+
+    def document_texts(self, document_id: str) -> list[str]:
+        """All chunk texts for one document, in reading order."""
+        data = self.collection.get(
+            where={"document_id": document_id},
+            include=["documents", "metadatas"],
+        )
+        pairs = sorted(
+            zip(data["metadatas"], data["documents"], strict=True),
+            key=lambda pair: pair[0]["chunk_index"],
+        )
+        return [text for _, text in pairs]

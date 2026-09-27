@@ -6,6 +6,7 @@ same result every time.
 """
 
 import hashlib
+import json
 import os
 import types
 from unittest.mock import patch
@@ -30,12 +31,25 @@ class FakeModels:
         )
 
 
+FAKE_QUESTIONS = [
+    "How many days of paid sick leave do employees get?",
+    "Can unused annual leave be carried forward?",
+    "How long is paternity leave?",
+    "What happens to leave during the notice period?",
+]
+
+
 class FakeInteractions:
-    fail = False
+    fail = False  # every call fails (e.g. quota exhausted)
+    suggest_fail = False  # only question generation fails
 
     def create(self, model, system_instruction, input):
         if FakeInteractions.fail:
             raise RuntimeError("429 quota exceeded")
+        if "example questions" in system_instruction:
+            if FakeInteractions.suggest_fail:
+                raise RuntimeError("503 model overloaded")
+            return types.SimpleNamespace(output_text=json.dumps(FAKE_QUESTIONS))
         return types.SimpleNamespace(output_text="Employees get **twelve days** of sick leave.")
 
 
@@ -63,3 +77,10 @@ def llm_down():
     FakeInteractions.fail = True
     yield
     FakeInteractions.fail = False
+
+
+@pytest.fixture
+def suggestions_down():
+    FakeInteractions.suggest_fail = True
+    yield
+    FakeInteractions.suggest_fail = False

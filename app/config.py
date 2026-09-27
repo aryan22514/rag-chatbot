@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     EMBEDDING_DIM: int = 768
     LLM_MODEL: str = "gemini-3.8-flash"
     TOP_K: int = 5
+    SUGGESTION_COUNT: int = 4
 
 
 settings = Settings()

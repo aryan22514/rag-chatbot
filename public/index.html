@@ -471,7 +471,7 @@
       <div class="spec"><b data-count="768">0</b><span>numbers per vector</span><p>Truncated from 3,072 — a quarter of the storage for almost the same accuracy.</p></div>
       <div class="spec"><b data-count="5">0</b><span>passages per answer</span><p>The closest matches by cosine similarity, and nothing else.</p></div>
       <div class="spec hot"><b data-count="0">0</b><span>outside facts</span><p>The model is instructed to answer only from your passages — or say it can't.</p></div>
-      <div class="spec"><b data-count="10">0</b><span>tests passing</span><p>The chunking maths is locked in with pytest, including the 1,089-word sample.</p></div>
+      <div class="spec"><b data-count="32">0</b><span>tests passing</span><p>Chunking, every API path and suggested questions — run on every push by GitHub Actions.</p></div>
     </div>
   </div>
 </section>
@@ -1075,7 +1075,7 @@ $$(".rv").forEach((el) => io.observe(el));
 /* ═════════ live: talks to your running server ═════════ */
 const live = {
   status: $("#liveStatus"), form: $("#liveForm"), input: $("#liveInput"), btn: $("#liveBtn"),
-  chips: $("#liveChips"), out: $("#liveOut"), docs: 0, busy: false,
+  chips: $("#liveChips"), out: $("#liveOut"), docs: 0, busy: false, suggestedFor: 0,
 };
 const REFUSAL = /couldn[’']?t find that in your documents|no documents have been uploaded/i;
 
@@ -1104,6 +1104,7 @@ async function checkLive() {
   try {
     const s = await api("/stats");
     live.docs = s.total_documents;
+    if (live.docs && live.docs !== live.suggestedFor) { live.suggestedFor = live.docs; loadLiveSuggestions(); }
     if (live.docs) {
       setLive("ok", `Connected · ${s.total_documents} document${s.total_documents === 1 ? "" : "s"} · ${s.total_chunks} passages indexed on this machine`);
     } else {
@@ -1113,6 +1114,18 @@ async function checkLive() {
     live.docs = 0;
     setLive("down", `Server not reachable — start it with <code>uvicorn app.main:app --reload</code>`);
   }
+}
+
+async function loadLiveSuggestions() {
+  try {
+    const { suggestions } = await api("/suggestions?limit=3");
+    if (!suggestions || !suggestions.length) return;
+    live.chips.innerHTML = suggestions.map((s) =>
+      `<button type="button" data-q="${esc(s.question)}" title="Suggested from ${esc(s.source)}">${esc(s.question)}</button>`
+    ).join("");
+    live.input.placeholder = "Ask something in " + suggestions[0].source + "…";
+    checkLiveButtons();
+  } catch (_) {}
 }
 
 function renderAnswer(text) {

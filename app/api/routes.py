@@ -8,6 +8,7 @@ from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 from app.config import settings
 from app.core.document_processor import DocumentProcessor
 from app.core.rag_chain import RagChain
+from app.core.suggestions import QuestionSuggester
 from app.core.vector_store import VectorStore
 
 router = APIRouter()
@@ -17,6 +18,7 @@ processor = DocumentProcessor(
 )
 store = VectorStore()
 rag = RagChain(store)
+suggester = QuestionSuggester()
 
 
 @router.post("/upload")
@@ -51,11 +53,16 @@ async def upload_document(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Embedding failed: {e}") from e
 
+    questions = suggester.safe_generate([c.text for c in chunks], file.filename)
+    if questions:
+        store.set_questions(document_id, questions)
+
     return {
         "document_id": document_id,
         "filename": file.filename,
         "total_words": len(text.split()),
         "chunks_stored": stored,
+        "suggested_questions": questions,
     }
 
 
@@ -95,3 +102,29 @@ def delete_document(document_id: str):
 @router.delete("/reset")
 def reset():
     return {"deleted_chunks": store.reset()}
+
+
+@router.get("/suggestions")
+def suggestions(limit: int = Query(6, ge=1, le=20)):
+    """Questions generated from the uploaded documents, mixed across documents.
+
+    Documents uploaded before this feature existed get their questions
+    generated on first request and cached.
+    """
+    per_doc: list[list[dict]] = []
+    for doc in store.list_documents():
+        doc_id = doc["document_id"]
+        questions = store.get_questions(doc_id)
+        if questions is None:
+            questions = suggester.safe_generate(store.document_texts(doc_id), doc["source"])
+            if questions:
+                store.set_questions(doc_id, questions)
+        per_doc.append(
+            [{"question": q, "source": doc["source"], "document_id": doc_id} for q in questions]
+        )
+
+    # Round-robin so every document is represented near the top
+    mixed = []
+    for i in range(max((len(qs) for qs in per_doc), default=0)):
+        mixed.extend(qs[i] for qs in per_doc if i < len(qs))
+    return {"suggestions": mixed[:limit]}

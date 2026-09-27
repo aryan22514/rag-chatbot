@@ -226,6 +226,16 @@
   .chip:hover:not(:disabled) { border-color: var(--accent); background: var(--accent-soft); transform: translateY(-1px); }
   .chip:disabled { opacity: .5; cursor: not-allowed; }
   .chip em { font-style: normal; font-family: var(--mono); font-size: 10.5px; color: var(--warn); margin-left: 6px; }
+  .chip .src { font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); margin-left: 8px; }
+  .chip-skel {
+    display: inline-block; height: 36px; border-radius: 999px;
+    background: linear-gradient(90deg, var(--surface-2) 25%, var(--line) 50%, var(--surface-2) 75%);
+    background-size: 200% 100%; animation: shimmer 1.4s infinite;
+  }
+  .try-note { font-size: 13px; color: var(--ink-3); }
+  .next { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 2px 2px 0; animation: rise .3s ease-out; }
+  .next-label { font-size: 11px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: .07em; margin-right: 2px; }
+  .next .chip { font-size: 13px; padding: 6px 12px; }
 
   /* turns */
   .turns { display: flex; flex-direction: column; gap: 30px; }
@@ -450,13 +460,8 @@
         </div>
 
         <div class="try">
-          <p class="try-label" id="tryLabel">Try asking</p>
-          <div class="chips" id="chips">
-            <button class="chip" type="button" data-q="How many sick leaves do I get?">How many sick leaves do I get?</button>
-            <button class="chip" type="button" data-q="Can I carry forward unused annual leave?">Can I carry forward unused annual leave?</button>
-            <button class="chip" type="button" data-q="How long is paternity leave?">How long is paternity leave?</button>
-            <button class="chip" type="button" data-q="What is the stock price of Tesla?">What is the stock price of Tesla?<em>tests refusal</em></button>
-          </div>
+          <p class="try-label" id="tryLabel">Suggested questions</p>
+          <div class="chips" id="chips"></div>
         </div>
       </section>
 
@@ -505,6 +510,10 @@ let active = -1;
 let busy = false;
 let uploading = 0;
 let online = null;
+let suggestions = [];
+let suggestionsLoading = false;
+let docKey = "";
+const OFF_TOPIC = "What is the stock price of Tesla?";
 
 const X_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>';
 const EV_EMPTY = `
@@ -568,6 +577,67 @@ async function refresh() {
   }
   renderLibrary();
   updateComposer();
+  const key = docs.map((d) => d.document_id).sort().join(",");
+  if (key !== docKey) { docKey = key; loadSuggestions(); }
+}
+
+/* ───── suggested questions (written from your documents) ───── */
+async function loadSuggestions() {
+  if (!docs.length) { suggestions = []; renderChips(); return; }
+  suggestionsLoading = true;
+  renderChips();
+  try {
+    suggestions = (await api("/suggestions?limit=8")).suggestions || [];
+  } catch (_) {
+    suggestions = [];
+  }
+  suggestionsLoading = false;
+  renderChips();
+}
+
+function chipHTML(s, showSource) {
+  return `<button class="chip" type="button" data-q="${esc(s.question)}" title="From ${esc(s.source)}">${esc(s.question)}${
+    showSource ? `<span class="src">${esc(s.source)}</span>` : ""}</button>`;
+}
+
+function renderChips() {
+  const offTopic = `<button class="chip" type="button" data-q="${OFF_TOPIC}">${OFF_TOPIC}<em>tests refusal</em></button>`;
+  const manyDocs = new Set(suggestions.map((s) => s.source)).size > 1;
+  if (!docs.length) {
+    el.tryLabel.textContent = "Suggested questions";
+    el.chips.innerHTML = `<p class="try-note">Upload a PDF and questions written from its contents will appear here.</p>`;
+  } else if (suggestionsLoading && !suggestions.length) {
+    el.tryLabel.textContent = "Reading your documents for questions…";
+    el.chips.innerHTML = [210, 260, 180].map((w) => `<span class="chip-skel" style="width:${w}px"></span>`).join("");
+  } else if (!suggestions.length) {
+    el.tryLabel.textContent = "Try asking";
+    el.chips.innerHTML = offTopic;
+  } else {
+    el.tryLabel.textContent = "Suggested from your documents";
+    el.chips.innerHTML = suggestions.slice(0, 6).map((s) => chipHTML(s, manyDocs)).join("") + offTopic;
+  }
+}
+
+/* Follow-ups: unasked suggestions from the documents this answer cited */
+function nextQuestions(t) {
+  const asked = new Set(turns.map((x) => x.q.trim().toLowerCase()));
+  const cited = new Set((t.sources || []).map((s) => s.source));
+  const fresh = suggestions.filter((s) => !asked.has(s.question.trim().toLowerCase()));
+  const fromCited = t.refused ? [] : fresh.filter((s) => cited.has(s.source));
+  return (fromCited.length ? fromCited : fresh).slice(0, 3);
+}
+
+function renderNext(i) {
+  el.turns.querySelectorAll(".next").forEach((n) => n.remove());
+  const t = turns[i];
+  if (!t || t.pending || t.error) return;
+  const qs = nextQuestions(t);
+  if (!qs.length) return;
+  const box = document.createElement("div");
+  box.className = "next";
+  box.innerHTML = `<span class="next-label">${t.refused ? "Try instead" : "Ask next"}</span>` + qs.map((s) => chipHTML(s, false)).join("");
+  document.getElementById("turn-" + i).appendChild(box);
+  el.thread.scrollTop = el.thread.scrollHeight;
 }
 
 function renderLibrary() {
@@ -588,8 +658,7 @@ function renderLibrary() {
         </div>`).join("")
     : `<p class="empty-lib">Your library is empty. Upload a PDF to start — the <b>sample leave policy</b> makes a good first test.</p>`;
 
-  el.chips.querySelectorAll(".chip").forEach((c) => (c.disabled = !docs.length));
-  el.tryLabel.textContent = docs.length ? "Try asking" : "Upload a PDF to try these";
+  renderChips();
 }
 
 function setUpload(state, name, msg, label) {
@@ -612,15 +681,20 @@ async function uploadOne(file) {
   }
   uploading++;
   clearTimeout(setUpload.timer);
-  setUpload("working", file.name, "Reading, chunking and embedding…", "indexing");
+  setUpload("working", file.name, "Reading, chunking, embedding and writing questions…", "indexing");
   const t0 = performance.now();
   const form = new FormData();
   form.append("file", file);
   try {
     const d = await api("/upload", { method: "POST", body: form });
     setUpload("done", file.name, `${plural(d.chunks_stored, "passage")} · ${Number(d.total_words).toLocaleString()} words`, since(t0));
+    const qs = d.suggested_questions || [];
+    if (qs.length) {
+      suggestions = qs.map((q) => ({ question: q, source: file.name, document_id: d.document_id })).concat(suggestions);
+    }
     await refresh();
-    toast(`${file.name} is ready — ask away`);
+    renderChips();
+    toast(qs.length ? `${file.name} is ready — ${qs.length} suggested questions added` : `${file.name} is ready — ask away`);
     setUpload.timer = setTimeout(() => { if (!uploading) el.uploadCard.hidden = true; }, 6000);
   } catch (e) {
     setUpload("error", file.name, e.message, "failed");
@@ -823,6 +897,7 @@ async function ask(text) {
 
   drawTurn(i);
   setActive(i);
+  renderNext(i);
   busy = false;
   updateComposer();
   el.input.focus();
@@ -870,6 +945,8 @@ el.chips.addEventListener("click", (e) => {
 });
 
 el.turns.addEventListener("click", (e) => {
+  const nextChip = e.target.closest(".next .chip");
+  if (nextChip) { ask(nextChip.dataset.q); return; }
   const btn = e.target.closest(".ev-btn");
   const turn = e.target.closest(".turn");
   if (!turn) return;
