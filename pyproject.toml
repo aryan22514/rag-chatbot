@@ -1,0 +1,20 @@
+[project]
+name = "rag-chatbot"
+version = "1.0.0"
+description = "Chat with your PDFs — grounded, cited answers using FastAPI, Gemini and ChromaDB."
+requires-python = ">=3.10"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's File(...) / Query(...) defaults are the framework's intended pattern
+extend-immutable-calls = ["fastapi.File", "fastapi.Query", "fastapi.Depends"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

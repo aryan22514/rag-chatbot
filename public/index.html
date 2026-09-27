@@ -1,0 +1,1165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Groundwork · Ask your documents</title>
+<meta name="description" content="Upload a PDF, ask in plain English, and get answers grounded in your own documents — with the exact passages attached.">
+<link rel="stylesheet" href="fonts/fonts.css">
+<style>
+  :root {
+    --bg: #06070A;
+    --bg-2: #0B0D12;
+    --panel: #12151C;
+    --panel-2: #181C25;
+    --line: #242936;
+    --ink: #F3F4F7;
+    --ink-2: #A6ACBA;
+    --ink-3: #6B7282;
+    --accent: #7088FF;
+    --accent-soft: rgba(112, 136, 255, .14);
+    --marker: #FFE15A;
+    --marker-ink: #14120A;
+    --good: #3DD39B;
+    --warn: #F2B34C;
+    --display: "Bricolage Grotesque", ui-sans-serif, system-ui, -apple-system, sans-serif;
+    --sans: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --gutter: max(24px, calc((100vw - 1180px) / 2 + 24px));
+    color-scheme: dark;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  [hidden] { display: none !important; }
+  html { background: var(--bg); scroll-behavior: smooth; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font-family: var(--sans); font-size: 17px; line-height: 1.55;
+    -webkit-font-smoothing: antialiased; overflow-x: hidden;
+  }
+  a { color: inherit; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
+  .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); margin-bottom: 16px; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding-inline: 24px; }
+  .narrow { max-width: 780px; }
+  .big {
+    font-family: var(--display); font-weight: 800;
+    font-size: clamp(36px, 5.4vw, 76px); line-height: 1.01; letter-spacing: -.038em; text-wrap: balance;
+  }
+  .lead { font-size: clamp(17px, 1.45vw, 20px); color: var(--ink-2); max-width: 54ch; margin-top: 20px; }
+  .y { color: var(--marker); }
+  .sweep {
+    background-image: linear-gradient(var(--marker), var(--marker));
+    background-repeat: no-repeat; background-position: 0 90%;
+    background-size: var(--s, 0%) 28%;
+  }
+
+  /* ───────── nav ───────── */
+  .nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 50;
+    display: flex; align-items: center; gap: 28px; padding: 14px var(--gutter);
+    border-bottom: 1px solid transparent;
+    transition: background .3s, border-color .3s;
+  }
+  .nav.scrolled {
+    background: rgba(6, 7, 10, .72); border-color: var(--line);
+    -webkit-backdrop-filter: saturate(160%) blur(18px); backdrop-filter: saturate(160%) blur(18px);
+  }
+  .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; font-family: var(--display); font-weight: 700; font-size: 18px; letter-spacing: -.02em; }
+  .mark { position: relative; width: 22px; height: 22px; flex: none; }
+  .mark i { position: absolute; height: 6px; width: 14px; border-radius: 2px; background: var(--accent); }
+  .mark i:nth-child(1) { left: 0; top: 1px; }
+  .mark i:nth-child(2) { left: 4px; top: 8px; opacity: .65; }
+  .mark i:nth-child(3) { left: 8px; top: 15px; opacity: .35; }
+  .nav-links { display: flex; gap: 26px; margin-left: auto; font-size: 14px; }
+  .nav-links a { text-decoration: none; color: var(--ink-2); transition: color .2s; }
+  .nav-links a:hover { color: var(--ink); }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+    font: 600 15px/1 var(--sans); padding: 14px 22px; border-radius: 999px; text-decoration: none;
+    border: 1px solid var(--line); color: var(--ink); background: transparent;
+    transition: transform .2s, background .2s, border-color .2s, color .2s;
+  }
+  .btn:hover { transform: translateY(-1px); border-color: var(--ink-3); }
+  .btn.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .btn.primary:hover { background: #FFFFFF; }
+  .btn.sm { padding: 9px 15px; font-size: 13.5px; }
+  .btn svg { transition: transform .2s; }
+  .btn:hover svg { transform: translateX(3px); }
+
+  /* ───────── hero ───────── */
+  .hero { position: relative; height: 100vh; height: 100svh; min-height: 640px; display: grid; place-items: center; text-align: center; overflow: hidden; }
+  #heroCanvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .hero::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse 70% 60% at 50% 50%, rgba(6,7,10,.35) 0%, rgba(6,7,10,.8) 62%, var(--bg) 100%);
+  }
+  .hero-inner { position: relative; z-index: 2; padding: 0 24px; max-width: 1160px; }
+  .hero h1 {
+    font-family: var(--display); font-weight: 800;
+    font-size: clamp(46px, 9.2vw, 132px); line-height: .94; letter-spacing: -.048em; text-wrap: balance;
+  }
+  .hero h1 .sweep { animation: heroSweep 1.2s .9s cubic-bezier(.65, 0, .35, 1) forwards; background-size: 0% 26%; }
+  @keyframes heroSweep { to { background-size: 100% 26%; } }
+  .hero .sub { font-size: clamp(17px, 1.6vw, 21px); color: var(--ink-2); max-width: 44ch; margin: 28px auto 36px; }
+  .hero-ctas { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .hero-inner > * { opacity: 0; transform: translateY(22px); animation: up 1s cubic-bezier(.2, .7, .2, 1) forwards; }
+  .hero-inner > :nth-child(2) { animation-delay: .12s; }
+  .hero-inner > :nth-child(3) { animation-delay: .28s; }
+  .hero-inner > :nth-child(4) { animation-delay: .4s; }
+  @keyframes up { to { opacity: 1; transform: none; } }
+  .scroll-cue {
+    position: absolute; bottom: 26px; left: 50%; transform: translateX(-50%); z-index: 2;
+    font-family: var(--mono); font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: var(--ink-3);
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+  }
+  .scroll-cue i { width: 1px; height: 40px; background: linear-gradient(var(--ink-2), transparent); animation: cue 2s ease-in-out infinite; transform-origin: top; }
+  @keyframes cue { 0% { transform: scaleY(0); opacity: 1; } 60% { transform: scaleY(1); opacity: 1; } 100% { transform: scaleY(1); opacity: 0; } }
+
+  /* ───────── pinned scenes ───────── */
+  .scene { position: relative; height: var(--len, 400vh); }
+  .stage { position: sticky; top: 0; height: 100vh; height: 100svh; overflow: hidden; }
+  .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .shade { display: none; }
+  .caps {
+    position: absolute; z-index: 2; left: var(--gutter); top: 50%; transform: translateY(-50%);
+    width: min(38vw, 470px); height: 360px; pointer-events: none;
+  }
+  .cap { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; opacity: 0; will-change: opacity, transform; }
+  .cap h2 { font-family: var(--display); font-weight: 800; font-size: clamp(32px, 4.1vw, 58px); line-height: 1.02; letter-spacing: -.036em; text-wrap: balance; }
+  .cap p:not(.eyebrow) { font-size: clamp(16px, 1.3vw, 19px); color: var(--ink-2); margin-top: 16px; max-width: 36ch; }
+
+  .readout {
+    position: absolute; z-index: 2; right: var(--gutter); bottom: 9%;
+    width: 230px; padding: 12px 14px 10px; border: 1px solid var(--line); border-radius: 14px;
+    background: rgba(18, 21, 28, .78); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+    font-family: var(--mono); font-size: 11.5px; opacity: 0;
+  }
+  .readout header { display: flex; justify-content: space-between; color: var(--ink-3); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 8px; }
+  .readout .vp { height: 176px; overflow: hidden; -webkit-mask-image: linear-gradient(transparent, #000 14%, #000 86%, transparent); mask-image: linear-gradient(transparent, #000 14%, #000 86%, transparent); }
+  .readout .rows div { display: flex; justify-content: space-between; line-height: 1.75; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  .readout .rows span:first-child { color: var(--ink-3); }
+
+  /* answer scene */
+  .answer-stage {
+    display: grid; grid-template-columns: minmax(0, .95fr) minmax(0, 1.05fr); align-items: center; gap: 64px;
+    padding-inline: var(--gutter);
+  }
+  .ans-demo { display: flex; flex-direction: column; gap: 14px; }
+  .q-bubble { align-self: flex-end; background: var(--ink); color: var(--bg); padding: 12px 18px; border-radius: 18px 18px 4px 18px; font-size: 17px; opacity: 0; }
+  .ans-card { background: var(--panel); border: 1px solid var(--line); border-radius: 4px 22px 22px 22px; padding: 20px 22px 22px; box-shadow: 0 40px 100px rgba(0,0,0,.5); opacity: 0; }
+  .ans-card header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; min-height: 26px; }
+  .badge { font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 999px; background: rgba(61,211,155,.12); color: var(--good); opacity: 0; transform: scale(.9); transition: opacity .35s, transform .35s; }
+  .badge.on { opacity: 1; transform: none; }
+  .badge.warn { background: rgba(242,179,76,.13); color: var(--warn); }
+  .ans-card .t { margin-left: auto; font-size: 11.5px; color: var(--ink-3); }
+  .ans-text { font-size: clamp(18px, 1.65vw, 22px); line-height: 1.5; min-height: 4.5em; }
+  .ans-text mark {
+    color: inherit; border-radius: 4px; padding: 0 .12em;
+    background: linear-gradient(var(--marker), var(--marker)) no-repeat 0 0 / var(--s, 0%) 100%;
+  }
+  .caret { display: inline-block; width: 2px; height: 1.05em; background: var(--accent); vertical-align: -.16em; margin-left: 2px; animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .srcs { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 12px; }
+  .src-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 7px 12px; opacity: 0; }
+  .rk { font-family: var(--mono); font-size: 11px; color: var(--accent); background: var(--accent-soft); padding: 2px 7px; border-radius: 6px; }
+  .nm { font-size: 13.5px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pc { font-family: var(--mono); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+  .mt { grid-column: 1 / -1; height: 5px; border-radius: 3px; background: var(--panel-2); overflow: hidden; }
+  .mt i { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 3px; }
+
+  /* ───────── honesty ───────── */
+  .honest { padding: 20vh 0; }
+  .honest .wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 72px; align-items: center; }
+  .refuse { background: var(--panel); border: 1px solid var(--line); border-radius: 22px; padding: 22px; display: flex; flex-direction: column; gap: 14px; }
+  .refuse .q-bubble { opacity: 1; }
+  .refuse .ans-card { opacity: 1; box-shadow: none; background: var(--bg-2); }
+  .refuse .badge { opacity: 1; transform: none; }
+  .refuse .ans-text { min-height: 0; }
+  .refuse .src-row { opacity: 1; }
+  .refuse .mt i { background: var(--ink-3); transition: width 1.4s .4s cubic-bezier(.2, .7, .2, 1); }
+  .refuse.in .mt i { width: var(--w); }
+  .refuse .note { font-size: 13px; color: var(--warn); font-family: var(--mono); }
+
+  .rv { opacity: 0; transform: translateY(32px); transition: opacity 1s cubic-bezier(.2, .7, .2, 1), transform 1s cubic-bezier(.2, .7, .2, 1); }
+  .rv.in { opacity: 1; transform: none; }
+  .rv.d1 { transition-delay: .12s; }
+  .rv.d2 { transition-delay: .24s; }
+
+  /* ───────── film ───────── */
+  .film-stage { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 26px; padding: 76px 24px 30px; }
+  .film-copy { text-align: center; }
+  .film-copy .big { font-size: clamp(32px, 4.6vw, 64px); }
+  .window {
+    width: min(1100px, 92vw, calc((100svh - 280px) * 1.684 + 2px));
+    border-radius: var(--rad, 28px); overflow: hidden; border: 1px solid var(--line); background: var(--panel);
+    box-shadow: 0 50px 140px rgba(0,0,0,.65), 0 0 0 1px rgba(255,255,255,.03);
+    transform: scale(var(--k, .84)); transform-origin: 50% 30%; will-change: transform;
+  }
+  .chrome { display: flex; align-items: center; gap: 7px; padding: 10px 14px; background: var(--panel-2); border-bottom: 1px solid var(--line); }
+  .chrome i { width: 11px; height: 11px; border-radius: 50%; background: #3A3F4C; }
+  .chrome span { margin: 0 auto; font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); padding-right: 51px; }
+  .window video { display: block; width: 100%; height: auto; aspect-ratio: 1280 / 760; background: #0D0F14; }
+  .film-cap { color: var(--ink-3); font-size: 14px; text-align: center; }
+
+  /* ───────── specs ───────── */
+  .specs { padding: 16vh 0; }
+  .spec-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 24px; overflow: hidden; margin-top: 56px; }
+  .spec { background: var(--bg-2); padding: 36px 30px 34px; }
+  .spec b { display: block; font-family: var(--display); font-weight: 800; font-size: clamp(58px, 6.2vw, 92px); line-height: 1; letter-spacing: -.045em; font-variant-numeric: tabular-nums; }
+  .spec.hot b { color: var(--marker); }
+  .spec span { display: block; font-weight: 600; font-size: 17px; margin-top: 14px; }
+  .spec p { color: var(--ink-2); font-size: 15px; margin-top: 6px; }
+
+  /* ───────── stack ───────── */
+  .stack { padding: 4vh 0 16vh; }
+  .stack-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 48px; }
+  .tool { border: 1px solid var(--line); border-radius: 20px; padding: 24px; background: linear-gradient(180deg, var(--panel), var(--bg-2)); transition: border-color .25s, transform .25s; }
+  .tool:hover { border-color: var(--accent); transform: translateY(-3px); }
+  .tool .role { font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--accent); }
+  .tool h3 { font-family: var(--display); font-weight: 700; font-size: 22px; letter-spacing: -.02em; margin-top: 10px; }
+  .tool p { font-size: 15px; color: var(--ink-2); margin-top: 6px; }
+
+  /* ───────── live try ───────── */
+  .try { padding: 16vh 0 18vh; background: radial-gradient(ellipse 60% 50% at 50% 0%, rgba(112,136,255,.16), transparent 70%); }
+  .try .wrap { text-align: center; }
+  .live-status { display: inline-flex; align-items: center; gap: 10px; font-size: 14px; color: var(--ink-2); margin: 26px 0 30px; padding: 8px 15px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); }
+  .live-status i { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-3); flex: none; }
+  .live-status.ok i { background: var(--good); box-shadow: 0 0 0 4px rgba(61,211,155,.15); }
+  .live-status.down i { background: #FF7A7A; }
+  .live-status code { font-family: var(--mono); font-size: 12.5px; color: var(--ink); }
+  .live-form { display: flex; gap: 10px; padding: 8px; border: 1px solid var(--line); border-radius: 20px; background: var(--panel); transition: border-color .2s, box-shadow .2s; }
+  .live-form:focus-within { border-color: var(--accent); box-shadow: 0 0 0 5px var(--accent-soft); }
+  .live-form input { flex: 1; min-width: 0; background: transparent; border: 0; outline: 0; color: var(--ink); font: inherit; font-size: 17px; padding: 10px 12px; }
+  .live-form input::placeholder { color: var(--ink-3); }
+  .live-form .btn { padding: 12px 22px; }
+  .live-form .btn:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+  .live-chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 14px; }
+  .live-chips button { font: inherit; font-size: 13.5px; color: var(--ink-2); background: transparent; border: 1px solid var(--line); border-radius: 999px; padding: 7px 13px; cursor: pointer; transition: border-color .2s, color .2s; }
+  .live-chips button:hover:not(:disabled) { border-color: var(--accent); color: var(--ink); }
+  .live-chips button:disabled { opacity: .4; cursor: not-allowed; }
+  #liveOut { text-align: left; margin-top: 26px; }
+  .live-card { background: var(--panel); border: 1px solid var(--line); border-radius: 20px; padding: 18px 20px 14px; animation: up .5s cubic-bezier(.2, .7, .2, 1) both; }
+  .live-card .badge { opacity: 1; transform: none; }
+  .live-card .ans { font-size: 18px; line-height: 1.55; margin: 12px 0 14px; }
+  .live-card .ans strong { background: var(--marker); color: var(--marker-ink); padding: 0 .15em; border-radius: 3px; font-weight: 600; }
+  .src-chip { display: inline-flex; gap: 8px; font-family: var(--mono); font-size: 12px; color: var(--ink-2); border: 1px solid var(--line); border-radius: 8px; padding: 5px 9px; margin: 0 6px 6px 0; }
+  .src-chip b { color: var(--accent); font-weight: 500; }
+  .thinking { display: inline-flex; gap: 4px; }
+  .thinking i { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: pulse 1.2s infinite; }
+  .thinking i:nth-child(2) { animation-delay: .15s; }
+  .thinking i:nth-child(3) { animation-delay: .3s; }
+  @keyframes pulse { 0%, 80%, 100% { opacity: .25; } 40% { opacity: 1; } }
+  .try-cta { margin-top: 44px; }
+
+  footer { max-width: 1180px; margin: 0 auto; padding: 28px 24px 36px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; color: var(--ink-3); font-size: 13.5px; }
+  footer a { color: var(--ink-2); text-decoration: none; }
+  footer a:hover { color: var(--ink); }
+
+  /* ───────── responsive ───────── */
+  @media (max-width: 900px) {
+    .hero::after { background: radial-gradient(ellipse 90% 55% at 50% 48%, rgba(6,7,10,.7) 0%, rgba(6,7,10,.88) 60%, var(--bg) 100%); }
+    .nav-links { display: none; }
+    .nav .btn { margin-left: auto; }
+    .caps { left: 20px; right: 20px; width: auto; top: auto; bottom: 5%; transform: none; height: 230px; }
+    .cap h2 { font-size: clamp(28px, 7.6vw, 42px); }
+    .cap p:not(.eyebrow) { font-size: 15.5px; margin-top: 10px; }
+    .shade { display: block; position: absolute; left: 0; right: 0; bottom: 0; height: 48%; z-index: 1; background: linear-gradient(transparent, var(--bg) 42%); }
+    .readout { display: none; }
+    .answer-stage { grid-template-columns: 1fr; gap: 26px; align-content: center; padding-top: 64px; }
+    .answer-stage .big { font-size: clamp(32px, 8vw, 46px); }
+    .answer-stage .lead { display: none; }
+    .honest .wrap { grid-template-columns: 1fr; gap: 40px; }
+    .spec-grid, .stack-grid { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 560px) {
+    .spec-grid, .stack-grid { grid-template-columns: 1fr; }
+    .live-form { flex-direction: column; }
+    .ans-text { font-size: 17px; }
+  }
+
+  /* reduced motion: no pinning, no scrubbing — everything shown at rest */
+  .reduced { scroll-behavior: auto; }
+  .reduced .scene { height: auto; }
+  .reduced .stage { position: relative; height: auto; overflow: visible; }
+  .reduced .stage canvas { position: relative; height: 70vh; }
+  .reduced .caps { position: relative; left: auto; top: auto; transform: none; width: auto; height: auto; max-width: 1180px; margin: 0 auto; padding: 0 24px 60px; display: grid; gap: 36px; }
+  .reduced .cap { position: static; opacity: 1 !important; transform: none !important; }
+  .reduced .shade, .reduced .readout { display: none; }
+  .reduced .answer-stage { padding-block: 12vh; }
+  .reduced .film-stage { padding-block: 12vh; }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .001s !important; animation-delay: 0s !important; transition-duration: .001s !important; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="nav" id="nav">
+  <a class="brand" href="#top" aria-label="Groundwork, back to top">
+    <span class="mark" aria-hidden="true"><i></i><i></i><i></i></span>Groundwork
+  </a>
+  <div class="nav-links">
+    <a href="#how">How it works</a>
+    <a href="#demo">Demo</a>
+    <a href="#specs">Specs</a>
+    <a href="#try">Try it</a>
+  </div>
+  <a class="btn primary sm" href="app.html">Open app</a>
+</nav>
+
+<!-- ═════════ HERO ═════════ -->
+<header class="hero" id="top">
+  <canvas id="heroCanvas" aria-hidden="true"></canvas>
+  <div class="hero-inner">
+    <p class="eyebrow">Retrieval-augmented answers for your PDFs</p>
+    <h1>Ask your documents.<br><span class="sweep">Get answers with receipts.</span></h1>
+    <p class="sub">Upload a PDF, ask in plain English, and get an answer written only from your files — with the exact passages attached.</p>
+    <div class="hero-ctas">
+      <a class="btn primary" href="app.html">Open the app
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </a>
+      <a class="btn" href="#how">See how it works</a>
+    </div>
+  </div>
+  <div class="scroll-cue" aria-hidden="true">Scroll<i></i></div>
+</header>
+
+<!-- ═════════ SCENE 1: READ + CHUNK ═════════ -->
+<section class="scene" id="how" data-scene="split" style="--len: 420vh">
+  <div class="stage">
+    <canvas id="splitCanvas" aria-hidden="true"></canvas>
+    <div class="shade"></div>
+    <div class="caps">
+      <div class="cap" data-in="0" data-out=".27">
+        <p class="eyebrow">Step 1 · Read</p>
+        <h2>It starts with a PDF.</h2>
+        <p>A policy, a contract, a manual. Groundwork pulls the text from every page.</p>
+      </div>
+      <div class="cap" data-in=".3" data-out=".5">
+        <p class="eyebrow">Step 2 · Chunk</p>
+        <h2>Cut into passages.</h2>
+        <p>500 words each — enough to hold a complete thought, focused enough to be about one thing.</p>
+      </div>
+      <div class="cap" data-in=".52" data-out=".71">
+        <p class="eyebrow">Step 2 · Chunk</p>
+        <h2>Each one overlaps <span class="y">the next.</span></h2>
+        <p>50 shared words at every boundary, so a sentence that lands on the edge is never cut in half.</p>
+      </div>
+      <div class="cap" data-in=".74" data-out="1">
+        <p class="eyebrow">Step 2 · Chunk</p>
+        <h2>1,089 words.<br>Three passages.</h2>
+        <p>Now they need to be understood — not just stored.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════ SCENE 2: EMBED + RETRIEVE ═════════ -->
+<section class="scene" data-scene="space" style="--len: 640vh">
+  <div class="stage">
+    <canvas id="spaceCanvas" aria-hidden="true"></canvas>
+    <div class="shade"></div>
+    <div class="caps">
+      <div class="cap" data-in="0" data-out=".15">
+        <p class="eyebrow">Step 3 · Embed</p>
+        <h2>Meaning becomes math.</h2>
+        <p>Gemini turns every passage into a list of 768 numbers that captures what it's about.</p>
+      </div>
+      <div class="cap" data-in=".17" data-out=".43">
+        <p class="eyebrow">Step 3 · Embed</p>
+        <h2>Similar ideas land close together.</h2>
+        <p>Sick-leave passages cluster here, holidays over there — even when they share no words. The map lives in ChromaDB, on your machine.</p>
+      </div>
+      <div class="cap" data-in=".46" data-out=".62">
+        <p class="eyebrow">Step 4 · Retrieve</p>
+        <h2>Your question joins the map.</h2>
+        <p>It's embedded the same way, then placed among your passages.</p>
+      </div>
+      <div class="cap" data-in=".64" data-out=".82">
+        <p class="eyebrow">Step 4 · Retrieve</p>
+        <h2>Its nearest neighbours become the <span class="y">sources.</span></h2>
+        <p>ChromaDB finds the five closest passages by cosine similarity — in milliseconds.</p>
+      </div>
+      <div class="cap" data-in=".84" data-out="1">
+        <p class="eyebrow">Step 4 · Retrieve</p>
+        <h2>Only those go to the model.</h2>
+        <p>Not your whole library. Just the passages that matter to this question.</p>
+      </div>
+    </div>
+    <div class="readout" id="readout" aria-hidden="true">
+      <header><span>passage 0</span><span>768-d</span></header>
+      <div class="vp"><div class="rows" id="readoutRows"></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════ SCENE 3: ANSWER ═════════ -->
+<section class="scene" data-scene="answer" style="--len: 320vh">
+  <div class="stage answer-stage">
+    <div class="ans-copy">
+      <p class="eyebrow">Step 5 · Answer</p>
+      <h2 class="big">Answers with <span class="sweep" id="ansSweep">receipts.</span></h2>
+      <p class="lead">Gemini writes the reply using only the retrieved passages — and every one comes attached, ranked by how closely it matched.</p>
+    </div>
+    <div class="ans-demo" aria-hidden="true">
+      <div class="q-bubble" id="ansQ">How many sick leaves do I get?</div>
+      <article class="ans-card" id="ansCard">
+        <header><span class="badge" id="ansBadge">Grounded answer</span><span class="t mono">1.5s</span></header>
+        <p class="ans-text" id="ansText"></p>
+        <div class="srcs">
+          <div class="src-row"><span class="rk">#1</span><span class="nm">sample-leave-policy.pdf · chunk 0</span><span class="pc" data-v="68.7">0.0%</span><div class="mt"><i></i></div></div>
+          <div class="src-row"><span class="rk">#2</span><span class="nm">sample-leave-policy.pdf · chunk 1</span><span class="pc" data-v="66.3">0.0%</span><div class="mt"><i></i></div></div>
+          <div class="src-row"><span class="rk">#3</span><span class="nm">sample-leave-policy.pdf · chunk 2</span><span class="pc" data-v="64.8">0.0%</span><div class="mt"><i></i></div></div>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════ HONESTY ═════════ -->
+<section class="honest">
+  <div class="wrap">
+    <div>
+      <p class="eyebrow rv">Grounded by design</p>
+      <h2 class="big rv d1">When the answer isn't there, it <span class="y">says so.</span></h2>
+      <p class="lead rv d2">Ask about Tesla's stock price. Gemini knows plenty about Tesla — but the best match in your library is 46%, and the model is instructed to answer only from your passages. So it declines instead of inventing something plausible.</p>
+    </div>
+    <div class="refuse rv d1" id="refuse">
+      <div class="q-bubble">What is the stock price of Tesla?</div>
+      <article class="ans-card">
+        <header><span class="badge warn">Not in your documents</span><span class="t mono">1.4s</span></header>
+        <p class="ans-text">I couldn't find that in your documents.</p>
+        <div class="srcs">
+          <div class="src-row"><span class="rk">#1</span><span class="nm">sample-leave-policy.pdf · chunk 0</span><span class="pc">46.3%</span><div class="mt"><i style="--w: 46.3%"></i></div></div>
+          <div class="src-row"><span class="rk">#2</span><span class="nm">sample-leave-policy.pdf · chunk 1</span><span class="pc">44.8%</span><div class="mt"><i style="--w: 44.8%"></i></div></div>
+          <div class="src-row"><span class="rk">#3</span><span class="nm">sample-leave-policy.pdf · chunk 2</span><span class="pc">44.6%</span><div class="mt"><i style="--w: 44.6%"></i></div></div>
+        </div>
+      </article>
+      <p class="note">low match scores → honest refusal</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════ FILM ═════════ -->
+<section class="scene" id="demo" data-scene="film" style="--len: 220vh">
+  <div class="stage film-stage">
+    <div class="film-copy">
+      <p class="eyebrow">See it in action</p>
+      <h2 class="big">Upload. Ask. Check the receipts.</h2>
+    </div>
+    <div class="window" id="filmWin">
+      <div class="chrome"><i></i><i></i><i></i><span>localhost:8000/app.html</span></div>
+      <video id="demoVideo" muted loop playsinline preload="metadata" poster="media/demo-poster.jpg" aria-label="Screen recording: uploading a PDF, asking about sick leave, viewing sources, and a refused question about Tesla">
+        <source src="media/demo.mp4" type="video/mp4">
+        <source src="media/demo.webm" type="video/webm">
+      </video>
+    </div>
+    <p class="film-cap">A PDF upload, a grounded answer with its sources, and a question it refuses — in 26 seconds.</p>
+  </div>
+</section>
+
+<!-- ═════════ SPECS ═════════ -->
+<section class="specs" id="specs">
+  <div class="wrap">
+    <p class="eyebrow rv">By the numbers</p>
+    <h2 class="big rv d1">Small numbers.<br>Careful choices.</h2>
+    <div class="spec-grid rv d2">
+      <div class="spec"><b data-count="500">0</b><span>words per passage</span><p>Enough context to answer from, focused enough to rank well.</p></div>
+      <div class="spec"><b data-count="50">0</b><span>words of overlap</span><p>Sentences that land on a boundary survive whole in at least one passage.</p></div>
+      <div class="spec"><b data-count="768">0</b><span>numbers per vector</span><p>Truncated from 3,072 — a quarter of the storage for almost the same accuracy.</p></div>
+      <div class="spec"><b data-count="5">0</b><span>passages per answer</span><p>The closest matches by cosine similarity, and nothing else.</p></div>
+      <div class="spec hot"><b data-count="0">0</b><span>outside facts</span><p>The model is instructed to answer only from your passages — or say it can't.</p></div>
+      <div class="spec"><b data-count="10">0</b><span>tests passing</span><p>The chunking maths is locked in with pytest, including the 1,089-word sample.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════ STACK ═════════ -->
+<section class="stack">
+  <div class="wrap">
+    <p class="eyebrow rv">Under the hood</p>
+    <h2 class="big rv d1">Six parts, one job each.</h2>
+    <div class="stack-grid">
+      <div class="tool rv"><p class="role">API</p><h3>FastAPI</h3><p>Upload, ask, list and delete endpoints — plus this page. Swagger docs for free.</p></div>
+      <div class="tool rv d1"><p class="role">Read</p><h3>pypdf</h3><p>Rebuilds readable text from the positioned glyphs inside every PDF page.</p></div>
+      <div class="tool rv d2"><p class="role">Embed</p><h3>gemini-embedding-001</h3><p>Turns passages and questions into 768-number vectors, tuned for retrieval.</p></div>
+      <div class="tool rv"><p class="role">Store</p><h3>ChromaDB</h3><p>A local vector database with an HNSW index for fast cosine-similarity search.</p></div>
+      <div class="tool rv d1"><p class="role">Answer</p><h3>Gemini 3.8 Flash</h3><p>Writes the reply from retrieved passages only, under a strict grounding instruction.</p></div>
+      <div class="tool rv d2"><p class="role">Verify</p><h3>pytest</h3><p>Guards the chunking contract — overlap, ordering and counts — on every run.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════ LIVE ═════════ -->
+<section class="try" id="try">
+  <div class="wrap narrow">
+    <p class="eyebrow rv">Live</p>
+    <h2 class="big rv d1">Try it on your documents.</h2>
+    <div class="live-status rv d2" id="liveStatus"><i></i><span>Checking your server…</span></div>
+    <form class="live-form rv d2" id="liveForm">
+      <input id="liveInput" placeholder="Ask something in your library…" autocomplete="off" aria-label="Question">
+      <button class="btn primary" id="liveBtn" type="submit">Ask</button>
+    </form>
+    <div class="live-chips" id="liveChips">
+      <button type="button" data-q="How many sick leaves do I get?">How many sick leaves do I get?</button>
+      <button type="button" data-q="How long is paternity leave?">How long is paternity leave?</button>
+      <button type="button" data-q="What is the stock price of Tesla?">What is the stock price of Tesla?</button>
+    </div>
+    <div id="liveOut" aria-live="polite"></div>
+    <div class="try-cta">
+      <a class="btn primary" href="app.html">Open the full app
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <span>Groundwork — built by Aryan Mehtele with FastAPI, Gemini and ChromaDB.</span>
+  <span><a href="app.html">App</a> · <a href="/docs">API docs</a> · <a href="#top">Back to top</a></span>
+</footer>
+
+<script>
+/* ═════════ utilities ═════════ */
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const seg = (p, a, b) => clamp((p - a) / (b - a), 0, 1);
+const ease = (t) => (t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+const easeOut = (t) => 1 - Math.pow(1 - t, 3);
+const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
+if (REDUCED) document.documentElement.classList.add("reduced");
+
+function rng(seed) {
+  return () => {
+    seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function fitCanvas(c) {
+  const ctx = c.getContext("2d");
+  const fit = () => {
+    const r = c.getBoundingClientRect();
+    const d = Math.min(window.devicePixelRatio || 1, 2);
+    c.width = Math.max(1, Math.round(r.width * d));
+    c.height = Math.max(1, Math.round(r.height * d));
+    ctx.setTransform(d, 0, 0, d, 0, 0);
+    c.W = r.width; c.H = r.height;
+  };
+  fit();
+  addEventListener("resize", fit);
+  return ctx;
+}
+function rr(ctx, x, y, w, h, r) {
+  r = Math.max(0, Math.min(r, w / 2, h / 2));
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+function progressOf(el) {
+  const r = el.getBoundingClientRect();
+  const total = r.height - innerHeight;
+  return total <= 0 ? 1 : clamp(-r.top / total, 0, 1);
+}
+function inView(el) {
+  const r = el.getBoundingClientRect();
+  return r.bottom > -40 && r.top < innerHeight + 40;
+}
+const MONO = '"IBM Plex Mono", ui-monospace, Menlo, monospace';
+const SANS = '"IBM Plex Sans", ui-sans-serif, system-ui, sans-serif';
+const DISPLAY = '"Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif';
+
+/* ═════════ hero: drifting words from the policy ═════════ */
+const drawHero = (() => {
+  const c = $("#heroCanvas");
+  const ctx = fitCanvas(c);
+  const r = rng(3);
+  const WORDS = ["sick leave", "twelve days", "annual leave", "carry forward", "26 weeks", "paternity", "15 days",
+    "notice period", "public holidays", "sabbatical", "bereavement", "medical certificate", "half pay", "HR portal",
+    "approval", "entitlement", "calendar year", "encashable", "floating holiday", "reporting manager", "pro-rated",
+    "unpaid leave", "compassionate leave", "chunk 0", "0.6868", "cosine", "768-d", "top 5", "passage", "policy 2026"];
+  const N = innerWidth < 700 ? 34 : 64;
+  const ps = Array.from({ length: N }, () => ({ x: r(), y: r(), z: .25 + r() * .75, w: WORDS[Math.floor(r() * WORDS.length)], hl: 0 }));
+  let mx = 0, my = 0, tx = 0, ty = 0, last = 0, next = 900;
+  addEventListener("pointermove", (e) => { tx = e.clientX / innerWidth - .5; ty = e.clientY / innerHeight - .5; });
+
+  return (t, dt) => {
+    const W = c.W, H = c.H;
+    ctx.clearRect(0, 0, W, H);
+    mx = lerp(mx, tx, .05); my = lerp(my, ty, .05);
+    if (!REDUCED && t - last > next) {
+      last = t; next = 1300 + Math.random() * 1100;
+      const pool = ps.filter((p) => p.z > .5 && p.hl <= 0 && p.y > .1 && p.y < .9 && (Math.abs(p.x - .5) > .33 || Math.abs(p.y - .5) > .34));
+      if (pool.length) pool[Math.floor(Math.random() * pool.length)].hl = 1;
+    }
+    for (const p of ps) {
+      if (!REDUCED) {
+        p.y -= p.z * dt * .000018;
+        if (p.y < -.06) { p.y = 1.06; p.x = Math.random(); }
+        p.hl = Math.max(0, p.hl - dt / 2600);
+      }
+      const x = p.x * W - mx * p.z * 50;
+      const y = p.y * H - my * p.z * 34;
+      const fs = 10 + p.z * 10;
+      ctx.font = `${p.z > .7 ? 500 : 400} ${fs}px ${MONO}`;
+      if (p.hl > 0) {
+        const a = Math.sin(p.hl * Math.PI);
+        const tw = ctx.measureText(p.w).width;
+        ctx.globalAlpha = a;
+        ctx.fillStyle = "#FFE15A";
+        rr(ctx, x - 5, y - fs * .92, tw + 10, fs * 1.3, 4);
+        ctx.fill();
+        ctx.fillStyle = "#14120A";
+        ctx.fillText(p.w, x, y);
+        ctx.globalAlpha = (1 - a) * p.z * .32;
+        ctx.fillStyle = "#A6ACBA";
+        ctx.fillText(p.w, x, y);
+      } else {
+        ctx.globalAlpha = p.z * .32;
+        ctx.fillStyle = "#A6ACBA";
+        ctx.fillText(p.w, x, y);
+      }
+    }
+    ctx.globalAlpha = 1;
+  };
+})();
+
+/* ═════════ scene 1: a page is read, then split into overlapping chunks ═════════ */
+const drawSplit = (() => {
+  const c = $("#splitCanvas");
+  const ctx = fitCanvas(c);
+  const r = rng(7);
+  const N = 30;
+  const L = Array.from({ length: N }, (_, i) => (i === 0 ? .52 : (i === 8 || i === 17 || i === 25) ? .38 + r() * .2 : .74 + r() * .24));
+  const CH = [[0, 11], [9, 20], [18, 29]];
+  const inTwo = (i) => (i >= 9 && i <= 11) || (i >= 18 && i <= 20);
+  const RANGE = ["words 0–499", "words 450–949", "words 900–1,088"];
+  const LINE = "#9AA0AC";
+
+  return (p) => {
+    const W = c.W, H = c.H;
+    ctx.clearRect(0, 0, W, H);
+    const mob = W < 900;
+    const cx = mob ? W / 2 : W * .66, cy = mob ? H * .33 : H / 2;
+    const ph = Math.min(mob ? H * .46 : H * .74, (mob ? W * .6 : W * .34) * 1.294);
+    const pw = ph / 1.294, px = cx - pw / 2, py = cy - ph / 2;
+    const pad = pw * .1, lh = (ph - pad * 2) / (N + 1), lw = pw - pad * 2;
+    const bar = Math.max(2.5, lh * .38);
+
+    const aIn = easeOut(seg(p, 0, .07));
+    const rev = seg(p, .03, .26);
+    const sp = ease(seg(p, .3, .5));
+    const ov = ease(seg(p, .52, .62));
+    const pk = ease(seg(p, .74, .85));
+    const fl = seg(p, .87, 1);
+
+    /* the page */
+    const pa = aIn * (1 - sp);
+    if (pa > .001) {
+      ctx.save();
+      ctx.globalAlpha = pa;
+      ctx.shadowColor = "rgba(0,0,0,.55)"; ctx.shadowBlur = 50; ctx.shadowOffsetY = 20;
+      ctx.fillStyle = "#F2F3F6";
+      rr(ctx, px, py, pw, ph, 10); ctx.fill();
+      ctx.restore();
+      ctx.globalAlpha = pa;
+      ctx.fillStyle = "#D13434";
+      rr(ctx, px + pw - 50, py + 14, 36, 17, 4); ctx.fill();
+      ctx.fillStyle = "#FFFFFF";
+      ctx.font = `500 9.5px ${MONO}`;
+      ctx.fillText("PDF", px + pw - 42, py + 26.5);
+      if (sp === 0) {
+        const reach = rev * N * 1.12;
+        for (let i = 0; i < N; i++) {
+          const f = clamp(reach - i, 0, 1);
+          if (f <= 0) break;
+          const ly = py + pad + lh * (i + .5);
+          const bh = i === 0 ? bar * 1.7 : bar;
+          ctx.fillStyle = i === 0 ? "#2A2E38" : LINE;
+          rr(ctx, px + pad, ly - bh / 2, lw * L[i] * f, bh, bh / 2); ctx.fill();
+        }
+        if (rev > 0 && rev < 1) {
+          const by = py + pad + lh * reach;
+          if (by < py + ph - pad * .5) {
+            const g = ctx.createLinearGradient(0, by - 26, 0, by);
+            g.addColorStop(0, "rgba(112,136,255,0)"); g.addColorStop(1, "rgba(112,136,255,.22)");
+            ctx.fillStyle = g; ctx.fillRect(px + 6, by - 26, pw - 12, 26);
+            ctx.fillStyle = "#7088FF"; ctx.fillRect(px + 6, by, pw - 12, 2);
+          }
+        }
+      }
+    }
+
+    /* chunk cards */
+    if (sp > 0) {
+      const g = mob ? W * .03 : W * .022;
+      const cw = Math.min(pw * .8, ((mob ? W * .88 : W * .54) - 2 * g) / 3);
+      const total = 3 * cw + 2 * g;
+      const chw = mob ? 132 : 164, chh = mob ? 30 : 36;
+
+      for (let k = 0; k < 3; k++) {
+        const [s, e] = CH[k];
+        const cnt = e - s + 1;
+        const sx = px, sy = py + pad + s * lh - lh * .25, sw = pw, sh = cnt * lh + lh * .5;
+        const th = sh * .86;
+        const tx = cx - total / 2 + k * (cw + g), ty = cy - th / 2 + (k - 1) * lh * 1.3;
+        const chx = cx - chw / 2, chy = cy - chh / 2 + (k - 1) * (chh + 12);
+
+        let x = lerp(lerp(sx, tx, sp), chx, pk);
+        let y = lerp(lerp(sy, ty, sp), chy, pk);
+        let w = lerp(lerp(sw, cw, sp), chw, pk);
+        let h = lerp(lerp(sh, th, sp), chh, pk);
+
+        const fk = ease(clamp((fl - k * .1) / .7, 0, 1));
+        if (fk > 0) {
+          const shrink = clamp(fk * 2.2, 0, 1);
+          const dcx = lerp(x + w / 2, W + 60, easeOut(clamp((fk - .25) / .75, 0, 1)));
+          const dcy = lerp(y + h / 2, cy + (k - 1) * 16, fk);
+          w = lerp(w, 12, shrink); h = lerp(h, 12, shrink);
+          x = dcx - w / 2; y = dcy - h / 2;
+        }
+
+        ctx.globalAlpha = Math.min(1, sp * 1.6);
+        ctx.fillStyle = "#12151C";
+        rr(ctx, x, y, w, h, fk > .4 ? h / 2 : lerp(8, 10, sp)); ctx.fill();
+        ctx.strokeStyle = `rgba(112,136,255,${.3 + .5 * pk + .2 * fk})`;
+        ctx.lineWidth = 1; ctx.stroke();
+        if (fk > .3) {
+          ctx.save();
+          ctx.globalAlpha = clamp((fk - .3) * 3, 0, 1);
+          ctx.shadowColor = "#7088FF"; ctx.shadowBlur = 18;
+          ctx.fillStyle = "#7088FF";
+          ctx.beginPath(); ctx.arc(x + w / 2, y + h / 2, 5, 0, Math.PI * 2); ctx.fill();
+          ctx.restore();
+        }
+
+        const la = 1 - pk;
+        if (la > .01) {
+          const vs = h / (cnt + .5);
+          const inset = w * (pad / pw), inner = w * (lw / pw);
+          for (let j = 0; j < cnt; j++) {
+            const i = s + j;
+            const ly = y + vs * (j + .75);
+            const bh = i === 0 ? bar * 1.7 : bar;
+            if (inTwo(i) && ov > 0) {
+              ctx.globalAlpha = la * ov;
+              ctx.fillStyle = "#FFE15A";
+              rr(ctx, x + inset - 5, ly - vs * .45, inner + 10, vs * .9, 3); ctx.fill();
+            }
+            ctx.globalAlpha = la;
+            ctx.fillStyle = inTwo(i) && ov > .5 ? "#3B3413" : LINE;
+            rr(ctx, x + inset, ly - bh / 2, inner * L[i], bh, bh / 2); ctx.fill();
+          }
+          ctx.globalAlpha = sp * clamp(1 - pk * 2.5, 0, 1);
+          ctx.fillStyle = "#6B7282";
+          ctx.font = `400 ${mob ? 9.5 : 11}px ${MONO}`;
+          ctx.fillText(RANGE[k], x, y - 9);
+        }
+
+        const chipA = pk * (1 - clamp(fk * 2.5, 0, 1));
+        if (chipA > .01) {
+          ctx.globalAlpha = chipA;
+          ctx.fillStyle = "#F3F4F7";
+          ctx.font = `500 ${mob ? 11.5 : 13}px ${MONO}`;
+          ctx.fillText(`chunk ${k}`, x + 14, y + h / 2 + 4.5);
+          ctx.fillStyle = "#6B7282";
+          ctx.font = `400 ${mob ? 10 : 11}px ${MONO}`;
+          const lbl = RANGE[k].replace("words ", "");
+          ctx.fillText(lbl, x + w - 14 - ctx.measureText(lbl).width, y + h / 2 + 4);
+        }
+      }
+
+      const ca = seg(p, .8, .86) * (1 - clamp(fl * 1.6, 0, 1));
+      if (ca > .01) {
+        ctx.globalAlpha = ca;
+        ctx.fillStyle = "#F3F4F7";
+        ctx.font = `700 ${mob ? 17 : 21}px ${DISPLAY}`;
+        const txt = "1,089 words  →  3 passages";
+        ctx.fillText(txt, cx - ctx.measureText(txt).width / 2, cy - (chh * 1.5 + 12) - 24);
+      }
+    }
+    ctx.globalAlpha = 1;
+  };
+})();
+
+/* ═════════ scene 2: vector space, then retrieval ═════════ */
+const drawSpace = (() => {
+  const c = $("#spaceCanvas");
+  const ctx = fitCanvas(c);
+  const r = rng(42);
+  const gauss = () => { let u = 0, v = 0; while (!u) u = r(); while (!v) v = r(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
+  const CL = [
+    { name: "sick leave", c: [1.35, .15, .45] },
+    { name: "annual leave", c: [-.45, .95, -1.15] },
+    { name: "parental leave", c: [-1.45, -.5, .6] },
+    { name: "public holidays", c: [.55, -1.15, -.95] },
+    { name: "notice period", c: [-.25, 1.2, 1.3] },
+  ];
+  const pts = [];
+  CL.forEach((cl, ci) => { for (let i = 0; i < 72; i++) pts.push({ x: cl.c[0] + gauss() * .32, y: cl.c[1] + gauss() * .32, z: cl.c[2] + gauss() * .32, ci, d: r() }); });
+  for (let i = 0; i < 170; i++) pts.push({ x: (r() - .5) * 4.6, y: (r() - .5) * 3.4, z: (r() - .5) * 4.6, ci: -1, d: r() });
+  const Q = { x: 1.55, y: .05, z: .7 };
+  const near = pts.map((pt, i) => ({ i, dd: (pt.x - Q.x) ** 2 + (pt.y - Q.y) ** 2 + (pt.z - Q.z) ** 2 }))
+    .sort((a, b) => a.dd - b.dd).slice(0, 5).map((o) => o.i);
+  const nearRank = new Map(near.map((i, k) => [i, k]));
+  const SCORES = [68.7, 66.3, 64.8, 61.9, 60.2];
+  const QUESTION = "How many sick leaves do I get?";
+
+  function project(pt, a, W, H, mob) {
+    const ca = Math.cos(a), sa = Math.sin(a);
+    let x = pt.x * ca - pt.z * sa, z = pt.x * sa + pt.z * ca, y = pt.y;
+    const tl = .38, ct = Math.cos(tl), st = Math.sin(tl);
+    const y2 = y * ct - z * st; z = y * st + z * ct; y = y2;
+    const f = 5.4 / (z + 6.4);
+    const S = Math.min(W * (mob ? .24 : .155), H * .2);
+    return { x: (mob ? W / 2 : W * .645) + x * f * S, y: (mob ? H * .34 : H * .5) + y * f * S, f, z };
+  }
+
+  return (p, t) => {
+    const W = c.W, H = c.H;
+    ctx.clearRect(0, 0, W, H);
+    const mob = W < 900;
+    const idle = REDUCED ? 0 : (t / 1000) * .025;
+    const a = -.55 + 2.1 * ease(seg(p, 0, .62)) + idle;
+    const burst = seg(p, 0, .14);
+    const lab = seg(p, .15, .22) * (1 - seg(p, .42, .47));
+    const qIn = ease(seg(p, .46, .57));
+    const typed = seg(p, .47, .6);
+    const ln = seg(p, .63, .8);
+    const dim = ease(seg(p, .8, .92));
+    const hot = seg(p, .63, .7);
+
+    const P = pts.map((pt, i) => {
+      const k = ease(clamp(burst * 1.3 - pt.d * .3, 0, 1));
+      const pr = project({ x: pt.x * k, y: pt.y * k, z: pt.z * k }, a, W, H, mob);
+      return { pr, pt, i, k };
+    }).sort((A, B) => B.pr.z - A.pr.z);
+
+    for (const { pr, pt, i, k } of P) {
+      if (k <= 0) continue;
+      const isNear = nearRank.has(i);
+      let alpha = (pt.ci >= 0 ? .85 : .38) * k * clamp(pr.f * 1.1, .35, 1.2);
+      if (!isNear) alpha *= 1 - .8 * dim;
+      const rad = (pt.ci >= 0 ? 1.9 : 1.3) * pr.f * (mob ? 1.1 : 1.35) + (isNear ? 2.2 * hot : 0);
+      ctx.globalAlpha = clamp(alpha, 0, 1);
+      ctx.fillStyle = isNear && hot > 0 ? "#FFE15A" : pt.ci >= 0 ? "#7088FF" : "#5A6072";
+      ctx.beginPath(); ctx.arc(pr.x, pr.y, rad, 0, Math.PI * 2); ctx.fill();
+    }
+
+    ctx.font = `500 ${mob ? 11 : 12.5}px ${MONO}`;
+    CL.forEach((cl, ci) => {
+      const persist = ci === 0 ? seg(p, .46, .52) * (1 - dim * .3) : 0;
+      const al = Math.max(lab, persist) * burst;
+      if (al <= .01) return;
+      const pr = project({ x: cl.c[0], y: cl.c[1] + .5, z: cl.c[2] }, a, W, H, mob);
+      ctx.globalAlpha = al;
+      ctx.fillStyle = "#F3F4F7";
+      const tw = ctx.measureText(cl.name).width;
+      ctx.fillText(cl.name, pr.x - tw / 2, pr.y);
+    });
+
+    if (qIn > 0) {
+      const qp = project(Q, a, W, H, mob);
+      const qx = lerp(-60, qp.x, qIn), qy = lerp(H * .5, qp.y, qIn);
+
+      near.forEach((idx, k) => {
+        const lk = ease(clamp(ln * 1.6 - k * .14, 0, 1));
+        if (lk <= 0) return;
+        const pr = project(pts[idx], a, W, H, mob);
+        ctx.globalAlpha = .9;
+        ctx.strokeStyle = "rgba(255,225,90,.85)"; ctx.lineWidth = 1.4;
+        ctx.beginPath(); ctx.moveTo(qx, qy); ctx.lineTo(lerp(qx, pr.x, lk), lerp(qy, pr.y, lk)); ctx.stroke();
+        const pa = clamp((lk - .75) / .25, 0, 1);
+        if (pa > 0 && (!mob || k < 3)) {
+          const label = `#${k + 1}  ${(SCORES[k] * pa).toFixed(1)}%`;
+          ctx.font = `500 ${mob ? 10.5 : 11.5}px ${MONO}`;
+          const tw = ctx.measureText(label).width;
+          const lx = pr.x + (pr.x >= qx ? 10 : -tw - 22), ly = pr.y - 10 + (k % 2 ? 16 : -6);
+          ctx.globalAlpha = pa;
+          ctx.fillStyle = "rgba(18,21,28,.92)"; rr(ctx, lx, ly - 13, tw + 12, 19, 6); ctx.fill();
+          ctx.strokeStyle = "rgba(255,225,90,.5)"; ctx.lineWidth = 1; ctx.stroke();
+          ctx.fillStyle = "#FFE15A"; ctx.fillText(label, lx + 6, ly + 1);
+        }
+      });
+
+      ctx.globalAlpha = qIn;
+      ctx.save();
+      ctx.shadowColor = "#FFE15A"; ctx.shadowBlur = 24;
+      ctx.fillStyle = "#FFE15A";
+      ctx.beginPath(); ctx.arc(qx, qy, 7, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+      const pulse = REDUCED ? 0 : (t / 1400) % 1;
+      ctx.globalAlpha = qIn * (1 - pulse) * .7;
+      ctx.strokeStyle = "#FFE15A"; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(qx, qy, 7 + pulse * 22, 0, Math.PI * 2); ctx.stroke();
+
+      const n = Math.round(typed * QUESTION.length);
+      if (n > 0) {
+        const txt = QUESTION.slice(0, n);
+        ctx.font = `500 ${mob ? 13 : 15}px ${SANS}`;
+        const full = ctx.measureText(QUESTION).width;
+        const bx = clamp(qx - full / 2 - 14, 12, W - full - 40), by = qy - (mob ? 52 : 60);
+        ctx.globalAlpha = qIn;
+        ctx.fillStyle = "rgba(18,21,28,.94)"; rr(ctx, bx, by, full + 28, mob ? 32 : 36, 18); ctx.fill();
+        ctx.strokeStyle = "rgba(255,225,90,.7)"; ctx.lineWidth = 1; ctx.stroke();
+        ctx.fillStyle = "#F3F4F7";
+        ctx.fillText(txt, bx + 14, by + (mob ? 21 : 23));
+      }
+    }
+    ctx.globalAlpha = 1;
+
+    const ro = $("#readout");
+    const rv = seg(p, .05, .1) * (1 - seg(p, .4, .45));
+    ro.style.opacity = rv;
+    if (rv > 0) {
+      const rows = $("#readoutRows");
+      const travel = rows.scrollHeight - 176;
+      rows.style.transform = `translateY(${-seg(p, .05, .45) * travel}px)`;
+    }
+  };
+})();
+
+(function buildReadout() {
+  const r = rng(11);
+  let html = "";
+  for (let i = 0; i < 768; i++) {
+    const v = (r() - .5) * .3;
+    html += `<div><span>${String(i).padStart(3, "0")}</span><span>${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(4)}</span></div>`;
+  }
+  $("#readoutRows").innerHTML = html;
+})();
+
+/* ═════════ scene 3: the answer assembles ═════════ */
+const drawAnswer = (() => {
+  const FULL = "Employees are entitled to twelve days of paid sick leave per calendar year. Unused sick leave does not carry forward.";
+  const KEY = "twelve days";
+  const k0 = FULL.indexOf(KEY), k1 = k0 + KEY.length;
+  const qB = $("#ansQ"), card = $("#ansCard"), text = $("#ansText"), badge = $("#ansBadge"), sweep = $("#ansSweep");
+  const rows = $$("#ansCard .src-row");
+  let lastN = -1, lastS = -1;
+
+  return (p) => {
+    sweep.style.setProperty("--s", (ease(seg(p, .0, .12)) * 100).toFixed(1) + "%");
+    const qa = easeOut(seg(p, .04, .12));
+    qB.style.opacity = qa; qB.style.transform = `translateY(${(1 - qa) * 14}px)`;
+    const ca = easeOut(seg(p, .1, .18));
+    card.style.opacity = ca; card.style.transform = `translateY(${(1 - ca) * 18}px)`;
+
+    const n = Math.round(seg(p, .16, .44) * FULL.length);
+    const s = seg(p, .46, .55);
+    if (n !== lastN || Math.abs(s - lastS) > .001) {
+      lastN = n; lastS = s;
+      const typed = FULL.slice(0, n);
+      let html;
+      if (n <= k0) html = esc(typed);
+      else {
+        const inKey = typed.slice(k0, Math.min(n, k1));
+        const dark = s > .45 ? ` style="--s:${(s * 100).toFixed(1)}%;color:#14120A"` : ` style="--s:${(s * 100).toFixed(1)}%"`;
+        html = esc(typed.slice(0, k0)) + `<mark${dark}>${esc(inKey)}</mark>` + esc(typed.slice(k1));
+      }
+      text.innerHTML = html + (n < FULL.length ? '<span class="caret"></span>' : "");
+    }
+    badge.classList.toggle("on", p > .53);
+
+    rows.forEach((row, k) => {
+      const v = ease(seg(p, .58 + k * .07, .7 + k * .07));
+      row.style.opacity = v;
+      row.style.transform = `translateY(${(1 - v) * 14}px)`;
+      const pc = row.querySelector(".pc"), target = parseFloat(pc.dataset.v);
+      pc.textContent = (target * v).toFixed(1) + "%";
+      row.querySelector(".mt i").style.width = target * v + "%";
+    });
+  };
+})();
+
+/* ═════════ film: the window grows as you arrive ═════════ */
+const drawFilm = (() => {
+  const win = $("#filmWin"), vid = $("#demoVideo");
+  if (REDUCED) vid.controls = true;
+  return (p) => {
+    const e = ease(seg(p, 0, .42));
+    win.style.setProperty("--k", lerp(.84, 1, e).toFixed(4));
+    win.style.setProperty("--rad", lerp(30, 14, e).toFixed(1) + "px");
+  };
+})();
+
+const demoVideo = $("#demoVideo");
+if (!REDUCED) {
+  new IntersectionObserver((entries) => {
+    entries.forEach((en) => {
+      if (en.isIntersecting) demoVideo.play().catch(() => {});
+      else demoVideo.pause();
+    });
+  }, { threshold: .35 }).observe(demoVideo);
+}
+
+/* ═════════ captions ═════════ */
+function updateCaps(scene, p) {
+  $$(".cap", scene).forEach((cap) => {
+    const a = parseFloat(cap.dataset.in), b = parseFloat(cap.dataset.out);
+    const enter = a <= 0 ? 1 : seg(p, a, a + .045);
+    const leave = b >= 1 ? 0 : seg(p, b - .045, b);
+    const v = enter * (1 - leave);
+    cap.style.opacity = v;
+    cap.style.transform = `translateY(${((1 - enter) * 26 - leave * 26).toFixed(1)}px)`;
+  });
+}
+
+/* ═════════ main loop ═════════ */
+const SCENES = [
+  { el: $('[data-scene="split"]'), draw: drawSplit, rest: .64 },
+  { el: $('[data-scene="space"]'), draw: drawSpace, rest: .76 },
+  { el: $('[data-scene="answer"]'), draw: drawAnswer, rest: 1 },
+  { el: $('[data-scene="film"]'), draw: drawFilm, rest: 1 },
+];
+const heroEl = $(".hero"), nav = $("#nav");
+
+if (REDUCED) {
+  const still = () => { drawHero(0, 0); SCENES.forEach((s) => s.draw(s.rest, 0)); };
+  still();
+  addEventListener("resize", still);
+} else {
+  let prev = performance.now();
+  const loop = (t) => {
+    const dt = Math.min(64, t - prev); prev = t;
+    if (inView(heroEl)) drawHero(t, dt);
+    for (const s of SCENES) {
+      if (!inView(s.el)) continue;
+      const p = progressOf(s.el);
+      s.draw(p, t);
+      updateCaps(s.el, p);
+    }
+    requestAnimationFrame(loop);
+  };
+  requestAnimationFrame(loop);
+}
+
+const onScroll = () => nav.classList.toggle("scrolled", scrollY > 24);
+addEventListener("scroll", onScroll, { passive: true });
+onScroll();
+
+/* ═════════ reveal + counters ═════════ */
+function countUp(el) {
+  const target = parseInt(el.dataset.count, 10);
+  if (REDUCED || target === 0) { el.textContent = target.toLocaleString(); return; }
+  const t0 = performance.now(), dur = 1400;
+  const step = (t) => {
+    const k = easeOut(clamp((t - t0) / dur, 0, 1));
+    el.textContent = Math.round(target * k).toLocaleString();
+    if (k < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+const io = new IntersectionObserver((entries) => {
+  entries.forEach((en) => {
+    if (!en.isIntersecting) return;
+    en.target.classList.add("in");
+    $$("[data-count]", en.target).forEach(countUp);
+    io.unobserve(en.target);
+  });
+}, { threshold: .18, rootMargin: "0px 0px -8% 0px" });
+$$(".rv").forEach((el) => io.observe(el));
+
+/* ═════════ live: talks to your running server ═════════ */
+const live = {
+  status: $("#liveStatus"), form: $("#liveForm"), input: $("#liveInput"), btn: $("#liveBtn"),
+  chips: $("#liveChips"), out: $("#liveOut"), docs: 0, busy: false,
+};
+const REFUSAL = /couldn[’']?t find that in your documents|no documents have been uploaded/i;
+
+async function api(path) {
+  const res = await fetch("/api" + path);
+  let data = null;
+  try { data = await res.json(); } catch (_) {}
+  if (!res.ok) {
+    let msg = data && data.detail;
+    if (Array.isArray(msg)) msg = msg.map((d) => d.msg).join("; ");
+    throw new Error(msg || `Request failed (${res.status})`);
+  }
+  return data;
+}
+
+function setLive(state, html) {
+  live.status.className = "live-status " + state;
+  live.status.lastElementChild.innerHTML = html;
+  const enabled = state === "ok" && live.docs > 0 && !live.busy;
+  live.btn.disabled = !enabled;
+  live.input.disabled = !(state === "ok" && live.docs > 0);
+  $$("button", live.chips).forEach((b) => (b.disabled = !enabled));
+}
+
+async function checkLive() {
+  try {
+    const s = await api("/stats");
+    live.docs = s.total_documents;
+    if (live.docs) {
+      setLive("ok", `Connected · ${s.total_documents} document${s.total_documents === 1 ? "" : "s"} · ${s.total_chunks} passages indexed on this machine`);
+    } else {
+      setLive("ok", `Connected · your library is empty — <a href="app.html">upload a PDF in the app</a> first`);
+    }
+  } catch (_) {
+    live.docs = 0;
+    setLive("down", `Server not reachable — start it with <code>uvicorn app.main:app --reload</code>`);
+  }
+}
+
+function renderAnswer(text) {
+  return esc(text).split("\n").filter((l) => l.trim()).map((l) =>
+    "<p>" + l.replace(/^[-•]\s+|^\*\s+/, "• ").replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>") + "</p>"
+  ).join("");
+}
+
+async function liveAsk(q) {
+  q = (q || "").trim();
+  if (!q || live.busy || !live.docs) return;
+  live.busy = true; checkLiveButtons();
+  live.out.innerHTML = `<div class="live-card"><span class="thinking"><i></i><i></i><i></i></span> <span style="color:var(--ink-2);font-size:14px;margin-left:6px">Finding the closest passages, then asking Gemini…</span></div>`;
+  const t0 = performance.now();
+  try {
+    const d = await api(`/ask?q=${encodeURIComponent(q)}&top_k=5`);
+    const secs = ((performance.now() - t0) / 1000).toFixed(1);
+    const refused = REFUSAL.test(d.answer || "");
+    const seen = new Set();
+    const srcs = (d.sources || []).filter((s) => { const k = s.source + "#" + s.chunk_index; if (seen.has(k)) return false; seen.add(k); return true; });
+    live.out.innerHTML = `
+      <div class="live-card">
+        <header style="display:flex;align-items:center;gap:10px">
+          <span class="badge ${refused ? "warn" : ""}">${refused ? "Not in your documents" : "Grounded answer"}</span>
+          <span class="mono" style="margin-left:auto;font-size:11.5px;color:var(--ink-3)">${secs}s</span>
+        </header>
+        <div class="ans">${renderAnswer(d.answer || "")}</div>
+        <div>${srcs.map((s) => `<span class="src-chip"><b>${(s.score * 100).toFixed(1)}%</b>${esc(s.source)} · chunk ${esc(s.chunk_index)}</span>`).join("")}</div>
+      </div>`;
+  } catch (e) {
+    live.out.innerHTML = `<div class="live-card"><span class="badge warn">Request failed</span><div class="ans">${esc(e.message)}</div></div>`;
+  }
+  live.busy = false; checkLiveButtons();
+}
+function checkLiveButtons() {
+  const enabled = live.docs > 0 && !live.busy && live.status.classList.contains("ok");
+  live.btn.disabled = !enabled;
+  $$("button", live.chips).forEach((b) => (b.disabled = !enabled));
+}
+
+live.form.addEventListener("submit", (e) => { e.preventDefault(); liveAsk(live.input.value); });
+live.chips.addEventListener("click", (e) => {
+  const b = e.target.closest("button");
+  if (b && !b.disabled) { live.input.value = b.dataset.q; liveAsk(b.dataset.q); }
+});
+checkLive();
+setInterval(checkLive, 20000);
+</script>
+</body>
+</html>

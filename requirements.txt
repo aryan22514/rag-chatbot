@@ -1,0 +1,9 @@
+# Runtime dependencies — what the server needs to run.
+# Pinned to the versions this project was built and tested with.
+fastapi==0.141.1
+uvicorn==0.52.4
+python-multipart==0.0.32
+pydantic-settings==2.15.0
+google-genai==2.25.0
+chromadb==1.5.9
+pypdf==6.17.0

@@ -1,0 +1,135 @@
+# Groundwork — Chat With Your Documents
+
+[![CI](https://github.com/aryan22514/rag-chatbot/actions/workflows/ci.yml/badge.svg)](https://github.com/aryan22514/rag-chatbot/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.141-009688)
+![ChromaDB](https://img.shields.io/badge/Vector_DB-ChromaDB-7088FF)
+![License](https://img.shields.io/badge/License-MIT-green)
+
+A **Retrieval-Augmented Generation (RAG)** app: upload a PDF, ask questions in plain English, and get answers written **only from your documents** — with the exact source passages attached and ranked by match score. If the answer isn't in your files, it says so instead of guessing.
+
+![Landing page](docs/landing.jpg)
+
+## How it works
+
+```mermaid
+flowchart LR
+    subgraph Upload
+        A[PDF] --> B[pypdf<br/>extract text]
+        B --> C[Chunk<br/>500 words · 50 overlap]
+        C --> D[Gemini embeddings<br/>768-d vectors]
+        D --> E[(ChromaDB<br/>cosine index)]
+    end
+    subgraph Ask
+        Q[Question] --> QE[Embed question]
+        QE --> S{Top-5 nearest<br/>passages}
+        E --> S
+        S --> P[Grounded prompt]
+        P --> L[Gemini 3.8 Flash]
+        L --> R[Answer + sources]
+    end
+```
+
+| Step | What happens | Why it matters |
+|---|---|---|
+| **Read** | `pypdf` rebuilds text from every page | PDFs store positioned glyphs, not paragraphs |
+| **Chunk** | 500-word passages, 50 words of overlap | A sentence on a boundary is never split in half |
+| **Embed** | `gemini-embedding-001`, truncated to 768 dims | `RETRIEVAL_DOCUMENT` / `RETRIEVAL_QUERY` task types for better matching |
+| **Retrieve** | ChromaDB HNSW index, cosine similarity | Finds the 5 closest passages in milliseconds |
+| **Answer** | Gemini writes from retrieved passages only | A strict system instruction prevents outside knowledge and forces "not found" when unsure |
+
+![Retrieval visualised](docs/retrieval.jpg)
+
+## Features
+
+- **Grounded answers with receipts**: every answer lists its source passages with match scores
+- **Honest refusals**: asks outside your documents get *"I couldn't find that in your documents."*
+- **Scroll-driven landing page** that animates the whole pipeline, plus a live "try it" box wired to the API
+- **Chat app** with drag-and-drop upload, evidence panel with keyword highlighting, delete / clear library
+- **Robust API**: clear errors for scanned or corrupt PDFs, AI-service failures (502), and invalid input (422)
+- **Tested & containerised**: 21 pytest tests (Gemini is faked, so tests run offline), Docker image, GitHub Actions CI
+
+![App](docs/app.jpg)
+
+## Quick start
+
+```bash
+git clone https://github.com/aryan22514/rag-chatbot.git
+cd rag-chatbot
+
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements-dev.txt
+
+cp .env.example .env          # then add your key from https://aistudio.google.com/apikey
+uvicorn app.main:app --reload
+```
+
+Open **http://localhost:8000** for the landing page, **/app.html** for the chat app, and **/docs** for interactive Swagger API docs.
+
+### With Docker
+
+```bash
+cp .env.example .env          # add your Gemini key
+docker compose up --build
+```
+
+Or run the published image:
+
+```bash
+docker run -p 8000:8000 -e GEMINI_API_KEY=your_key ghcr.io/aryan22514/rag-chatbot:latest
+```
+
+Vectors persist in the `chroma-data` volume across restarts.
+
+## API
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/upload` | Upload a PDF → extract, chunk, embed, store |
+| `GET` | `/api/ask?q=…&top_k=5` | Grounded answer + ranked source passages |
+| `GET` | `/api/search?q=…` | Raw similarity search (no LLM) |
+| `GET` | `/api/documents` | List documents in the library |
+| `DELETE` | `/api/documents/{id}` | Remove a document and its passages |
+| `DELETE` | `/api/reset` | Clear the whole library |
+| `GET` | `/api/stats` | Document and passage counts |
+| `GET` | `/api/health` | Health check (used by Docker) |
+
+## Project structure
+
+```
+app/
+├── main.py                  # FastAPI app, serves the UI
+├── config.py                # Typed settings from .env (pydantic-settings)
+├── api/routes.py            # HTTP endpoints + error handling
+└── core/
+    ├── document_processor.py  # PDF → text → overlapping chunks
+    ├── embeddings.py          # Gemini embedding client (batched)
+    ├── vector_store.py        # ChromaDB: add, search, list, delete
+    └── rag_chain.py           # Retrieve → build grounded prompt → answer
+public/
+├── index.html               # Scroll-driven landing page
+├── app.html                 # Chat app
+├── fonts/  media/           # Self-hosted fonts, demo video
+tests/
+├── test_chunking.py         # Chunking contract: overlap, order, counts
+├── test_api.py              # End-to-end API incl. every error path
+└── conftest.py              # Fake Gemini client for offline tests
+.github/workflows/ci.yml     # Lint → test → Docker build → smoke test → publish
+```
+
+## CI/CD
+
+Every push and pull request runs **GitHub Actions**:
+
+1. **Lint** with `ruff`
+2. **Test** with `pytest` (21 tests, Gemini faked, no API key or cost)
+3. **Build** the Docker image and **smoke-test** the running container
+4. On `main`: **publish** the image to GitHub Container Registry (`ghcr.io/aryan22514/rag-chatbot`)
+
+## Tech stack
+
+**Backend:** Python, FastAPI, Uvicorn, Pydantic · **AI:** Google Gemini (`gemini-embedding-001`, Gemini 3.8 Flash) · **Vector DB:** ChromaDB · **PDF:** pypdf · **Testing:** pytest, ruff · **DevOps:** Docker, Docker Compose, GitHub Actions, GHCR · **Frontend:** HTML, CSS, vanilla JS, Canvas
+
+## License
+
+MIT © Aryan Mehtele

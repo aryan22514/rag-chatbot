@@ -1,0 +1,14 @@
+venv/
+.env
+__pycache__/
+*.pyc
+data/
+uploads/
+.venv/
+.DS_Store
+.pytest_cache/
+.ruff_cache/
+# personal notes, not part of the project
+*.key
+*.pptx
+public/index.backup.html
