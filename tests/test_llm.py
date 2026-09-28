@@ -58,7 +58,8 @@ def test_clear_429_when_every_model_is_rate_limited(client, rate_limit):
     assert res.status_code == 429
     assert res.headers["retry-after"] == "59"
     detail = res.json()["detail"]
-    assert "free usage limit" in detail and "59 seconds" in detail
+    assert detail == "The AI service is busy right now. Please try again in a minute."
+    assert "gemini" not in detail.lower() and "429" not in detail
 
 
 def test_repeat_questions_are_answered_from_cache(client, rate_limit):

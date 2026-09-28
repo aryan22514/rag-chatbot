@@ -259,8 +259,7 @@
   .a-time { margin-left: auto; font-size: 11px; color: var(--ink-3); }
   .a-meta { font-family: var(--mono); font-size: 11px; color: var(--ink-3); }
   .a-meta b { font-weight: 500; color: var(--ink-2); }
-  .hint { margin-top: .6em; font-size: 13.5px; color: var(--ink-3); }
-  .hint code { font-family: var(--mono); font-size: 12px; background: var(--surface-2); padding: 1px 5px; border-radius: 4px; color: var(--ink-2); }
+
   .a-body { padding: 10px 16px 15px; font-size: 15.5px; line-height: 1.62; overflow-wrap: anywhere; }
   .a-body p + p, .a-body p + ul, .a-body ul + p { margin-top: .6em; }
   .a-body ul { padding-left: 1.2em; }
@@ -542,17 +541,39 @@ function since(t0) { return ((performance.now() - t0) / 1000).toFixed(1) + "s"; 
 function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
 
 async function api(path, opts = {}) {
-  const res = await fetch("/api" + path, opts);
+  let res;
+  try {
+    res = await fetch("/api" + path, opts);
+  } catch (_) {
+    const err = new Error("network");
+    err.network = true;
+    throw err;
+  }
   let data = null;
   try { data = await res.json(); } catch (_) {}
   if (!res.ok) {
     let msg = data && data.detail;
     if (Array.isArray(msg)) msg = msg.map((d) => d.msg).join("; ");
-    const err = new Error(msg || `Request failed (${res.status})`);
+    const err = new Error(msg || "Something went wrong. Please try again.");
     err.status = res.status;
     throw err;
   }
   return data;
+}
+
+/* Plain-language messages; technical details stay in the server log. */
+function friendlyError(e, action = "ask") {
+  if (e.network) return "Can't reach the server. Check that it's running, then try again.";
+  if (e.status === 429) return "The AI service is busy right now. Please try again in a minute.";
+  if (!e.status || e.status >= 500) {
+    return action === "upload"
+      ? "Something went wrong while processing this document. Please try again."
+      : action === "ask"
+        ? "Something went wrong while getting your answer. Please try again."
+        : "Something went wrong. Please try again.";
+  }
+  if (e.status === 422) return "Please check your question and try again.";
+  return e.message; // 400s/404s carry messages written for people (e.g. "Only PDF files are supported")
 }
 
 function toast(msg, kind = "") {
@@ -701,7 +722,7 @@ async function uploadOne(file) {
     toast(qs.length ? `${file.name} is ready — ${qs.length} suggested questions added` : `${file.name} is ready — ask away`);
     setUpload.timer = setTimeout(() => { if (!uploading) el.uploadCard.hidden = true; }, 6000);
   } catch (e) {
-    setUpload("error", file.name, e.message, "failed");
+    setUpload("error", file.name, friendlyError(e, "upload"), "failed");
   } finally {
     uploading--;
   }
@@ -712,8 +733,7 @@ async function removeDoc(id, name) {
     await api("/documents/" + encodeURIComponent(id), { method: "DELETE" });
     toast(`Removed ${name}`);
   } catch (e) {
-    if (e.status === 405) toast("Delete isn't wired up yet — add the DELETE /documents/{document_id} endpoint to routes.py", "warn");
-    else toast(e.message, "bad");
+    toast(e.status === 404 ? "That document was already removed." : friendlyError(e, "other"), "bad");
   }
   refresh();
 }
@@ -725,8 +745,7 @@ async function clearLibrary() {
     await api("/reset", { method: "DELETE" });
     toast("Library cleared");
   } catch (e) {
-    if (e.status === 405) toast("Clear isn't wired up yet — add the DELETE /reset endpoint to routes.py", "warn");
-    else toast(e.message, "bad");
+    toast(friendlyError(e, "other"), "bad");
   }
   refresh();
 }
@@ -813,21 +832,15 @@ function answerHTML(t, i) {
         </div>
       </article>`;
   }
-  if (t.error && t.status === 429) {
-    return `
-      <article class="a">
-        <div class="a-head"><span class="badge warn">Daily AI limit reached</span><span class="a-time mono">${t.time}</span></div>
-        <div class="a-body">
-          <p>${esc(t.error)}</p>
-          <p class="hint">Questions you've already asked still work — they're answered from the cache. To raise the limit, add billing to your key in Google AI Studio, or set different models with <code>LLM_FALLBACK_MODELS</code> in <code>.env</code>.</p>
-        </div>
-      </article>`;
-  }
   if (t.error) {
+    const label = t.status === 429 ? "Busy right now" : t.network ? "Can't reach the server" : "Couldn't get an answer";
     return `
       <article class="a">
-        <div class="a-head"><span class="badge bad">Request failed</span><span class="a-time mono">${t.time}</span></div>
+        <div class="a-head"><span class="badge ${t.status === 429 ? "warn" : "bad"}">${label}</span><span class="a-time mono">${t.time}</span></div>
         <div class="a-body"><p>${esc(t.error)}</p></div>
+        <div class="a-foot"><button class="ev-btn retry" type="button" data-q="${esc(t.q)}">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+          Try again</button></div>
       </article>`;
   }
   const badge = t.refused
@@ -906,7 +919,7 @@ async function ask(text) {
     const answer = d.answer || "";
     Object.assign(turn, { pending: false, answer, sources: dedupe(d.sources), refused: REFUSAL.test(answer), time: since(t0), model: d.model, cached: d.cached });
   } catch (e) {
-    Object.assign(turn, { pending: false, error: e.message, status: e.status, sources: [], time: since(t0) });
+    Object.assign(turn, { pending: false, error: friendlyError(e, "ask"), status: e.status, network: !!e.network, sources: [], time: since(t0) });
   }
 
   drawTurn(i);
@@ -961,6 +974,8 @@ el.chips.addEventListener("click", (e) => {
 el.turns.addEventListener("click", (e) => {
   const nextChip = e.target.closest(".next .chip");
   if (nextChip) { ask(nextChip.dataset.q); return; }
+  const retry = e.target.closest(".retry");
+  if (retry) { ask(retry.dataset.q); return; }
   const btn = e.target.closest(".ev-btn");
   const turn = e.target.closest(".turn");
   if (!turn) return;

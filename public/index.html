@@ -1080,13 +1080,15 @@ const live = {
 const REFUSAL = /couldn[’']?t find that in your documents|no documents have been uploaded/i;
 
 async function api(path) {
-  const res = await fetch("/api" + path);
+  let res;
+  try { res = await fetch("/api" + path); }
+  catch (_) { throw Object.assign(new Error("network"), { network: true }); }
   let data = null;
   try { data = await res.json(); } catch (_) {}
   if (!res.ok) {
     let msg = data && data.detail;
     if (Array.isArray(msg)) msg = msg.map((d) => d.msg).join("; ");
-    throw new Error(msg || `Request failed (${res.status})`);
+    throw Object.assign(new Error(msg || "Something went wrong."), { status: res.status });
   }
   return data;
 }
@@ -1156,8 +1158,11 @@ async function liveAsk(q) {
         <div>${srcs.map((s) => `<span class="src-chip"><b>${(s.score * 100).toFixed(1)}%</b>${esc(s.source)} · chunk ${esc(s.chunk_index)}</span>`).join("")}</div>
       </div>`;
   } catch (e) {
-    const limited = /free usage limit|rate limit|429/i.test(e.message);
-    live.out.innerHTML = `<div class="live-card"><span class="badge warn">${limited ? "Daily AI limit reached" : "Request failed"}</span><div class="ans">${esc(e.message)}</div></div>`;
+    const busy = e.status === 429;
+    const msg = e.network ? "Can't reach the server. Check that it's running, then try again."
+      : busy ? "The AI service is busy right now. Please try again in a minute."
+      : "Something went wrong while getting your answer. Please try again.";
+    live.out.innerHTML = `<div class="live-card"><span class="badge warn">${busy ? "Busy right now" : "Couldn't get an answer"}</span><div class="ans">${esc(msg)}</div></div>`;
   }
   live.busy = false; checkLiveButtons();
 }

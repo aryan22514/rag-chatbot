@@ -1,3 +1,4 @@
+import logging
 import shutil
 import tempfile
 from pathlib import Path
@@ -12,6 +13,7 @@ from app.core.rag_chain import RagChain
 from app.core.suggestions import QuestionSuggester
 from app.core.vector_store import VectorStore
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 processor = DocumentProcessor(
     chunk_size=settings.CHUNK_SIZE,
@@ -23,18 +25,20 @@ rag = RagChain(store, llm)
 suggester = QuestionSuggester(llm)
 
 
+BUSY = "The AI service is busy right now. Please try again in a minute."
+
+
 def ai_error(error: Exception, doing: str) -> HTTPException:
-    """Turn a Gemini failure into a clear HTTP error for the UI."""
-    if isinstance(error, RateLimitedError):
-        headers = {"Retry-After": str(error.retry_after)} if error.retry_after else None
-        return HTTPException(status_code=429, detail=str(error), headers=headers)
-    if is_rate_limited(error):
-        return HTTPException(
-            status_code=429,
-            detail=f"Gemini's free usage limit was reached while {doing}. "
-            "Limits reset daily; a paid API key removes them.",
-        )
-    return HTTPException(status_code=502, detail=f"The AI service returned an error: {error}")
+    """Log the real Gemini error; give the user a short, plain message."""
+    logger.error("AI call failed while %s: %s", doing, error)
+    if isinstance(error, RateLimitedError) or is_rate_limited(error):
+        retry = getattr(error, "retry_after", None)
+        headers = {"Retry-After": str(retry)} if retry else None
+        return HTTPException(status_code=429, detail=BUSY, headers=headers)
+    return HTTPException(
+        status_code=502,
+        detail=f"Something went wrong while {doing}. Please try again.",
+    )
 
 
 @router.post("/upload")
@@ -67,7 +71,7 @@ async def upload_document(file: UploadFile = File(...)):
     try:
         stored = store.add_chunks(chunks, document_id)
     except Exception as e:
-        raise ai_error(e, "embedding your document") from e
+        raise ai_error(e, "processing your document") from e
 
     questions = suggester.safe_generate([c.text for c in chunks], file.filename)
     if questions:
@@ -102,7 +106,7 @@ def ask(q: str = Query(..., min_length=1), top_k: int = Query(5, ge=1, le=20)):
     try:
         return rag.ask(q, top_k)
     except Exception as e:
-        raise ai_error(e, "answering your question") from e
+        raise ai_error(e, "getting your answer") from e
 
 
 @router.delete("/documents/{document_id}")

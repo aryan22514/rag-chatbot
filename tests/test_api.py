@@ -63,7 +63,24 @@ def test_top_k_is_validated(client):
 def test_llm_failure_is_reported_not_crashed(client, llm_down):
     res = client.get("/api/ask", params={"q": "sick leave"})
     assert res.status_code == 502
-    assert "internal server error" in res.json()["detail"]
+    detail = res.json()["detail"]
+    assert detail == "Something went wrong while getting your answer. Please try again."
+    assert "500" not in detail and "internal" not in detail.lower()
+
+
+def test_unexpected_errors_return_a_plain_message(client, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from app.api import routes
+    from app.main import app
+
+    def boom():
+        raise KeyError("metadata missing 'document_id'")
+
+    monkeypatch.setattr(routes.store, "list_documents", boom)
+    res = TestClient(app, raise_server_exceptions=False).get("/api/documents")
+    assert res.status_code == 500
+    assert res.json() == {"detail": "Something went wrong on our side. Please try again."}
 
 
 def test_delete_document(client):
