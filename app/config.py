@@ -20,6 +20,13 @@ class Settings(BaseSettings):
     SUGGESTION_COUNT: int = 4
     MAX_UPLOAD_MB: float = 20
 
+    # Public demo: every visitor gets a private library and a daily allowance,
+    # because they all share one Gemini API key. Off when running locally.
+    PUBLIC_MODE: bool = False
+    PUBLIC_MAX_DOCUMENTS: int = 3  # per visitor library
+    PUBLIC_DAILY_QUESTIONS: int = 25  # per IP address, per day
+    PUBLIC_DAILY_UPLOADS: int = 10  # per IP address, per day
+
     @property
     def llm_models(self) -> list[str]:
         """Main model first, then fallbacks — without duplicates."""

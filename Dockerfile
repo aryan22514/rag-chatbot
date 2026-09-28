@@ -23,10 +23,13 @@ RUN useradd --create-home --uid 1000 appuser \
     && chown -R appuser:appuser /app
 USER appuser
 
+# Hosts like Render pass the port to listen on in $PORT; 8000 otherwise
+ENV PORT=8000
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=4)"
+    CMD python -c "import os, urllib.request as u; u.urlopen('http://127.0.0.1:%s/api/health' % os.environ['PORT'], timeout=4)"
 
-# 0.0.0.0 so the port is reachable from outside the container; no --reload in production
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# 0.0.0.0 so the port is reachable from outside the container; no --reload in production.
+# --proxy-headers: behind a host's load balancer, see the visitor's real IP and https.
+CMD exec uvicorn app.main:app --host 0.0.0.0 --port "$PORT" --proxy-headers --forwarded-allow-ips "*"

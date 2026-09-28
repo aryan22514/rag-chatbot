@@ -50,7 +50,7 @@ flowchart LR
 - **Chat app** with drag-and-drop upload, evidence panel with keyword highlighting, delete / clear library
 - **Built for free-tier limits**: automatic fallback across Gemini models when one is rate limited, an answer cache so repeat questions cost nothing, and a clear 429 with `Retry-After` when every model is out of quota
 - **Robust API**: clear errors for scanned or corrupt PDFs, AI-service failures (502), and invalid input (422)
-- **Tested & containerised**: 54 pytest tests (Gemini is faked, so tests run offline), Docker image, GitHub Actions CI
+- **Tested & containerised**: 62 pytest tests (Gemini is faked, so tests run offline), Docker image, GitHub Actions CI
 
 ![App](docs/app.jpg)
 
@@ -84,6 +84,25 @@ docker run -p 8000:8000 -e GEMINI_API_KEY=your_key ghcr.io/aryan22514/rag-chatbo
 
 Vectors persist in the `chroma-data` volume across restarts.
 
+## Deploy a public demo (free, on Render)
+
+The repo includes a [`render.yaml`](render.yaml) Blueprint that builds the Dockerfile on Render's free plan.
+
+1. Push this repo to GitHub.
+2. On [render.com](https://render.com), sign in with GitHub → **New → Blueprint** → pick the repo.
+3. Paste your `GEMINI_API_KEY` when asked → **Apply**. The site goes live at `https://groundwork-xxxx.onrender.com` in a few minutes.
+
+With `PUBLIC_MODE=true` (set by the Blueprint), the app is safe to share:
+
+| Protection | Default |
+|---|---|
+| Each browser gets its own **private library** (anonymous cookie → its own ChromaDB collection) | visitors never see each other's files |
+| Files per visitor | 3, up to 5 MB each |
+| Questions per IP address per day (repeats from the cache are free) | 25 |
+| Uploads per IP address per day | 10 |
+
+Free Render services sleep after 15 minutes idle (the first visit then takes ~30 s) and their disk is wiped on restart, so demo libraries are temporary. Every push to `main` redeploys automatically.
+
 ## Free-tier limits
 
 Free Gemini API keys have small daily quotas **per model** (for example 20 requests/day). The app is built around that:
@@ -110,6 +129,7 @@ Change the order or models in `.env` (see `.env.example`). Your actual limits ar
 | `DELETE` | `/api/documents/{id}` | Remove a document and its passages |
 | `DELETE` | `/api/reset` | Clear the whole library |
 | `GET` | `/api/stats` | Document and passage counts |
+| `GET` | `/api/config` | Upload size and, on the public demo, per-visitor limits |
 | `GET` | `/api/health` | Health check (used by Docker) |
 
 ## Project structure
@@ -125,6 +145,8 @@ app/
     ├── vector_store.py        # ChromaDB: add, search, list, delete, stored questions
     ├── suggestions.py         # Gemini-written questions each document can answer
     ├── rag_chain.py           # Retrieve → build grounded prompt → answer (+ answer cache)
+    ├── library.py             # One library locally; a private one per visitor on the demo
+    ├── quota.py               # Daily per-IP limits for the public demo
     └── llm.py                 # Gemini calls with model fallback on rate limits
 public/
 ├── index.html               # Scroll-driven landing page
@@ -136,6 +158,7 @@ tests/
 ├── test_suggestions.py      # Question parsing, storage, caching, failure handling
 ├── test_llm.py              # Rate limits: fallback order, cache, 429 + Retry-After
 ├── test_formats.py          # Page citations, Word/text uploads, duplicates, size limit
+├── test_public.py           # Public demo: private libraries, daily limits
 └── conftest.py              # Fake Gemini client for offline tests
 .github/workflows/ci.yml     # Lint → test → Docker build → smoke test → publish
 ```
@@ -145,7 +168,7 @@ tests/
 Every push and pull request runs **GitHub Actions**:
 
 1. **Lint** with `ruff`
-2. **Test** with `pytest` (54 tests, Gemini faked, no API key or cost)
+2. **Test** with `pytest` (62 tests, Gemini faked, no API key or cost)
 3. **Build** the Docker image and **smoke-test** the running container
 4. On `main`: **publish** the image to GitHub Container Registry (`ghcr.io/aryan22514/rag-chatbot`)
 

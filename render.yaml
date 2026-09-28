@@ -1,0 +1,22 @@
+# Render Blueprint: deploys the public demo from this repo's Dockerfile.
+# Render dashboard → New → Blueprint → pick this repo → paste your Gemini key.
+services:
+  - type: web
+    name: groundwork
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false # entered in the dashboard, never committed
+      - key: PUBLIC_MODE
+        value: "true"
+      - key: MAX_UPLOAD_MB
+        value: "5"
+      - key: PUBLIC_MAX_DOCUMENTS
+        value: "3"
+      - key: PUBLIC_DAILY_QUESTIONS
+        value: "25"
+      - key: PUBLIC_DAILY_UPLOADS
+        value: "10"

@@ -471,7 +471,7 @@
       <div class="spec"><b data-count="768">0</b><span>numbers per vector</span><p>Truncated from 3,072 — a quarter of the storage for almost the same accuracy.</p></div>
       <div class="spec"><b data-count="5">0</b><span>passages per answer</span><p>The closest matches by cosine similarity, and nothing else.</p></div>
       <div class="spec hot"><b data-count="0">0</b><span>outside facts</span><p>The model is instructed to answer only from your passages — or say it can't.</p></div>
-      <div class="spec"><b data-count="54">0</b><span>tests passing</span><p>Chunking, every API path and suggested questions — run on every push by GitHub Actions.</p></div>
+      <div class="spec"><b data-count="62">0</b><span>tests passing</span><p>Chunking, every API path and suggested questions — run on every push by GitHub Actions.</p></div>
     </div>
   </div>
 </section>
@@ -1110,9 +1110,9 @@ async function checkLive() {
     live.docs = s.total_documents;
     if (live.docs && live.docs !== live.suggestedFor) { live.suggestedFor = live.docs; loadLiveSuggestions(); }
     if (live.docs) {
-      setLive("ok", `Connected · ${s.total_documents} document${s.total_documents === 1 ? "" : "s"} · ${s.total_chunks} passages indexed on this machine`);
+      setLive("ok", `Connected · ${s.total_documents} document${s.total_documents === 1 ? "" : "s"} · ${s.total_chunks} passages indexed`);
     } else {
-      setLive("ok", `Connected · your library is empty — <a href="app.html">upload a PDF in the app</a> first`);
+      setLive("ok", `Connected · your library is empty — <a href="app.html">upload a PDF in the app</a> first (or try the sample there)`);
     }
   } catch (_) {
     live.docs = 0;
@@ -1192,9 +1192,9 @@ async function liveAsk(q) {
   } catch (e) {
     const busy = e.status === 429;
     const msg = e.network ? "Can't reach the server. Check that it's running, then try again."
-      : busy ? "The AI service is busy right now. Please try again in a minute."
+      : busy ? (e.message || "The AI service is busy right now. Please try again in a minute.")
       : "Something went wrong while getting your answer. Please try again.";
-    live.out.innerHTML = `<div class="live-card"><span class="badge warn">${busy ? "Busy right now" : "Couldn't get an answer"}</span><div class="ans">${esc(msg)}</div></div>`;
+    live.out.innerHTML = `<div class="live-card"><span class="badge warn">${busy ? (/free/.test(e.message) ? "Daily limit reached" : "Busy right now") : "Couldn't get an answer"}</span><div class="ans">${esc(msg)}</div></div>`;
   }
   live.busy = false; checkLiveButtons();
 }

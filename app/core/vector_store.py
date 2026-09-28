@@ -8,11 +8,19 @@ from app.core.embeddings import EmbeddingService
 
 
 class VectorStore:
-    def __init__(self):
-        self.client = chromadb.PersistentClient(path=settings.CHROMA_DIR)
-        self.embeddings = EmbeddingService()
+    def __init__(
+        self,
+        name: str | None = None,
+        client: chromadb.ClientAPI | None = None,
+        embeddings: EmbeddingService | None = None,
+    ):
+        # One collection = one library. Locally there is a single shared library;
+        # the public demo gives every visitor a collection of their own.
+        self.name = name or settings.COLLECTION_NAME
+        self.client = client or chromadb.PersistentClient(path=settings.CHROMA_DIR)
+        self.embeddings = embeddings or EmbeddingService()
         self.collection = self.client.get_or_create_collection(
-            name=settings.COLLECTION_NAME,
+            name=self.name,
             metadata={"hnsw:space": "cosine"},
         )
 
@@ -121,9 +129,9 @@ class VectorStore:
 
     def reset(self) -> int:
         count = self.collection.count()
-        self.client.delete_collection(settings.COLLECTION_NAME)
+        self.client.delete_collection(self.name)
         self.collection = self.client.get_or_create_collection(
-            name=settings.COLLECTION_NAME,
+            name=self.name,
             metadata={"hnsw:space": "cosine"},
         )
         return count

@@ -175,6 +175,8 @@
   @media (hover: none) { .doc-x { opacity: 1; } }
   .empty-lib { font-size: 13px; color: var(--ink-3); padding: 4px 2px; line-height: 1.55; }
   .empty-lib b { color: var(--ink-2); font-weight: 500; }
+  .link-btn { font: inherit; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+  .demo-note { margin-top: 8px; font-size: 12px; }
   .library-foot { margin-top: auto; padding-top: 10px; border-top: 1px solid var(--line); }
   .danger-link { font-size: 12.5px; color: var(--ink-3); padding: 4px 0; }
   .danger-link:hover { color: var(--bad); }
@@ -422,7 +424,7 @@
       </span>
       <strong>Drop files here</strong>
       <span>or <u>browse files</u></span>
-      <small>PDF, Word, .txt or .md · up to 20 MB</small>
+      <small id="dropHint">PDF, Word, .txt or .md · up to 20 MB</small>
     </label>
 
     <div class="upload-card" id="uploadCard" hidden>
@@ -468,7 +470,7 @@
           </div>
           <div class="feature">
             <span class="f-icon" aria-hidden="true"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><ellipse cx="12" cy="5.5" rx="7.5" ry="2.8"/><path d="M4.5 5.5v13c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8v-13"/><path d="M4.5 12c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8"/></svg></span>
-            <div><strong>Local index</strong><p>Vectors live in ChromaDB on this machine. Text goes to Gemini only to embed and answer.</p></div>
+            <div id="privacyFeature"><strong>Local index</strong><p>Vectors live in ChromaDB on this machine. Text goes to Gemini only to embed and answer.</p></div>
           </div>
         </div>
 
@@ -528,6 +530,7 @@ let suggestionsLoading = false;
 let moreState = "idle"; // idle | loading | failed | exhausted — for "new set of questions"
 let moreRequest = null;
 let docKey = "";
+let config = { public: false };
 const OFF_TOPIC = "What is the stock price of Tesla?";
 
 const REFRESH_ICON = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg>';
@@ -577,7 +580,7 @@ async function api(path, opts = {}) {
 /* Plain-language messages; technical details stay in the server log. */
 function friendlyError(e, action = "ask") {
   if (e.network) return "Can't reach the server. Check that it's running, then try again.";
-  if (e.status === 429) return "The AI service is busy right now. Please try again in a minute.";
+  if (e.status === 429) return e.message || "The AI service is busy right now. Please try again in a minute."; // busy, or a demo daily limit
   if (!e.status || e.status >= 500) {
     return action === "upload"
       ? "Something went wrong while processing this document. Please try again."
@@ -762,7 +765,8 @@ function renderLibrary() {
           </div>
           <button class="doc-x" type="button" data-id="${esc(d.document_id)}" data-name="${esc(d.source)}" aria-label="Remove ${esc(d.source)}">${X_ICON}</button>
         </div>`).join("")
-    : `<p class="empty-lib">Your library is empty. Upload a PDF, Word or text file to start — the <b>sample leave policy</b> makes a good first test.</p>`;
+    : `<p class="empty-lib">Your library is empty. Upload a PDF, Word or text file to start, or <button class="link-btn" type="button" id="useSample">try the sample leave policy</button>.</p>${
+        config.public ? `<p class="empty-lib demo-note">Demo: your files are private to this browser and are cleared when the server restarts. Up to ${config.max_documents} files and ${config.daily_questions} questions a day.</p>` : ""}`;
 
   renderChips();
 }
@@ -925,7 +929,7 @@ function answerHTML(t, i) {
       </article>`;
   }
   if (t.error) {
-    const label = t.status === 429 ? "Busy right now" : t.network ? "Can't reach the server" : "Couldn't get an answer";
+    const label = t.status === 429 ? (/free /.test(t.error) ? "Daily limit reached" : "Busy right now") : t.network ? "Can't reach the server" : "Couldn't get an answer";
     return `
       <article class="a">
         <div class="a-head"><span class="badge ${t.status === 429 ? "warn" : "bad"}">${label}</span><span class="a-time mono">${t.time}</span></div>
@@ -1107,6 +1111,7 @@ window.addEventListener("drop", (e) => {
 });
 
 el.docList.addEventListener("click", (e) => {
+  if (e.target.closest("#useSample")) { useSample(); return; }
   const b = e.target.closest(".doc-x");
   if (b) removeDoc(b.dataset.id, b.dataset.name);
 });
@@ -1118,7 +1123,28 @@ function closeLibrary() { el.library.classList.remove("open"); el.scrim.hidden =
 $("#menuBtn").addEventListener("click", openLibrary);
 el.scrim.addEventListener("click", closeLibrary);
 
+async function useSample() {
+  try {
+    const res = await fetch("/samples/sample-leave-policy.pdf");
+    if (!res.ok) throw new Error();
+    const blob = await res.blob();
+    await uploadOne(new File([blob], "sample-leave-policy.pdf", { type: "application/pdf" }));
+  } catch (_) {
+    toast("Couldn't load the sample. Try uploading a file instead.", "bad");
+  }
+}
+
+/* Limits and privacy wording for the public demo */
+async function loadConfig() {
+  try { config = await api("/config"); } catch (_) { return; }
+  if (!config.public) return;
+  $("#dropHint").textContent = `PDF, Word, .txt or .md · up to ${config.max_upload_mb} MB`;
+  $("#privacyFeature").innerHTML = `<strong>Private to you</strong><p>Only this browser can see your files. They're cleared when the demo restarts, and text goes to Gemini only to embed and answer.</p>`;
+  renderLibrary();
+}
+
 /* ───── start ───── */
+loadConfig();
 renderEvidence();
 renderLibrary();
 updateComposer();

@@ -1,10 +1,13 @@
 import logging
+from uuid import uuid4
 
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import router
+from app.config import settings
+from app.core.library import VISITOR_ID
 
 logging.basicConfig(
     level=logging.INFO,
@@ -19,6 +22,32 @@ app = FastAPI(title="RAG Chatbot")
 app.include_router(router, prefix="/api")
 
 logger = logging.getLogger(__name__)
+VISITOR_COOKIE = "gw_visitor"
+
+
+@app.middleware("http")
+async def visitor_id(request: Request, call_next):
+    """Public demo: give each browser an anonymous id that keys its private library."""
+    if not settings.PUBLIC_MODE:
+        return await call_next(request)
+
+    visitor = request.cookies.get(VISITOR_COOKIE, "")
+    is_new = not VISITOR_ID.match(visitor)
+    if is_new:
+        visitor = uuid4().hex
+    request.state.visitor = visitor
+
+    response = await call_next(request)
+    if is_new:
+        response.set_cookie(
+            VISITOR_COOKIE,
+            visitor,
+            max_age=60 * 60 * 24 * 30,
+            httponly=True,
+            samesite="lax",
+            secure=request.url.scheme == "https",
+        )
+    return response
 
 
 @app.exception_handler(Exception)
