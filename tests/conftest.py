@@ -44,6 +44,7 @@ class FakeInteractions:
     suggest_fail = False  # only question generation fails
     limited: set = set()  # models that answer with a 429 rate-limit error
     calls: list = []  # every model called, in order
+    batches = 0  # "new questions" sets handed out so far
 
     def create(self, model, system_instruction, input):
         FakeInteractions.calls.append(model)
@@ -57,6 +58,12 @@ class FakeInteractions:
         if "example questions" in system_instruction:
             if FakeInteractions.suggest_fail:
                 raise RuntimeError("503 model overloaded")
+            if "Do not repeat" in input:
+                # A refresh: hand out a new, numbered set each time
+                FakeInteractions.batches += 1
+                n = FakeInteractions.batches
+                fresh = [f"What does rule {n}.{i} of the policy say?" for i in range(1, 5)]
+                return types.SimpleNamespace(output_text=json.dumps(fresh))
             return types.SimpleNamespace(output_text=json.dumps(FAKE_QUESTIONS))
         return types.SimpleNamespace(output_text="Employees get **twelve days** of sick leave.")
 

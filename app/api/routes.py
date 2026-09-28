@@ -5,12 +5,13 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile
+from pydantic import BaseModel, Field
 
 from app.config import settings
 from app.core.document_processor import SUPPORTED_TYPES, DocumentProcessor
 from app.core.llm import LLM, RateLimitedError, is_rate_limited
 from app.core.rag_chain import RagChain
-from app.core.suggestions import QuestionSuggester
+from app.core.suggestions import QuestionSuggester, normalize
 from app.core.vector_store import VectorStore
 
 logger = logging.getLogger(__name__)
@@ -26,6 +27,8 @@ suggester = QuestionSuggester(llm)
 
 
 BUSY = "The AI service is busy right now. Please try again in a minute."
+MAX_STORED_QUESTIONS = 60  # per document, newest kept
+MAX_REFRESH_DOCS = 3  # documents asked for new questions per refresh (saves quota)
 UNSUPPORTED = "Unsupported file type. Upload a PDF, Word (.docx), or text (.txt, .md) file."
 
 
@@ -169,8 +172,58 @@ def suggestions(limit: int = Query(6, ge=1, le=20)):
             [{"question": q, "source": doc["source"], "document_id": doc_id} for q in questions]
         )
 
-    # Round-robin so every document is represented near the top
+    return {"suggestions": round_robin(per_doc)[:limit]}
+
+
+def round_robin(per_doc: list[list[dict]]) -> list[dict]:
+    """Interleave documents so every one is represented near the top."""
     mixed = []
     for i in range(max((len(qs) for qs in per_doc), default=0)):
         mixed.extend(qs[i] for qs in per_doc if i < len(qs))
-    return {"suggestions": mixed[:limit]}
+    return mixed
+
+
+class MoreSuggestionsRequest(BaseModel):
+    asked: list[str] = Field(default_factory=list, max_length=500)
+    limit: int = Field(6, ge=1, le=20)
+
+
+@router.post("/suggestions/more")
+def more_suggestions(body: MoreSuggestionsRequest):
+    """A fresh set of questions, different from everything suggested or asked so far.
+
+    The UI calls this once every suggested question has been asked. New
+    questions are saved (newest first), so they survive a page reload.
+    """
+    docs = store.list_documents()
+    if not docs:
+        return {"suggestions": []}
+
+    asked = {normalize(q) for q in body.asked}
+    # Documents the user has been asking about come first
+    stored = {d["document_id"]: store.get_questions(d["document_id"]) or [] for d in docs}
+    docs.sort(key=lambda d: -sum(normalize(q) in asked for q in stored[d["document_id"]]))
+
+    per_doc: list[list[dict]] = []
+    failure: Exception | None = None
+    for doc in docs[:MAX_REFRESH_DOCS]:
+        doc_id = doc["document_id"]
+        existing = stored[doc_id]
+        known = {normalize(q) for q in existing} | asked
+        try:
+            fresh = suggester.generate(
+                store.document_texts(doc_id), doc["source"], avoid=existing + body.asked
+            )
+        except Exception as error:
+            failure = error
+            continue
+        fresh = [q for q in fresh if normalize(q) not in known]
+        if fresh:
+            store.set_questions(doc_id, (fresh + existing)[:MAX_STORED_QUESTIONS])
+            per_doc.append(
+                [{"question": q, "source": doc["source"], "document_id": doc_id} for q in fresh]
+            )
+
+    if not per_doc and failure is not None:
+        raise ai_error(failure, "writing new questions")
+    return {"suggestions": round_robin(per_doc)[: body.limit]}

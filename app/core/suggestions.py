@@ -10,6 +10,7 @@ the upload still succeeds and the document simply has no suggestions yet.
 
 import json
 import logging
+import random
 import re
 
 from app.config import settings
@@ -27,6 +28,7 @@ Rules:
 - Return ONLY a JSON array of strings. No numbering, no commentary."""
 
 MAX_CONTEXT_CHARS = 9000
+MAX_AVOID = 40  # most recent questions to list as "don't repeat"
 
 
 class QuestionSuggester:
@@ -35,19 +37,34 @@ class QuestionSuggester:
         self.models = settings.suggestion_models
         self.count = count or settings.SUGGESTION_COUNT
 
-    def generate(self, texts: list[str], filename: str) -> list[str]:
-        """Ask Gemini for questions about these chunks. May raise on API errors."""
-        sample = self._sample(texts)
+    def generate(
+        self, texts: list[str], filename: str, avoid: list[str] | None = None
+    ) -> list[str]:
+        """Ask Gemini for questions about these chunks. May raise on API errors.
+
+        `avoid` lists questions already suggested or asked. When given, we ask
+        for different questions and read a different random part of the
+        document, so each new set covers new ground.
+        """
+        avoid = [q for q in (avoid or []) if q.strip()][-MAX_AVOID:]
+        sample = self._sample(texts, shuffle=bool(avoid))
         if not sample:
             return []
 
-        generation = self.llm.generate(
-            SYSTEM_INSTRUCTION,
-            f"Write {self.count} questions about this document.\n\n"
-            f"DOCUMENT: {filename}\n\nTEXT:\n{sample}",
-            self.models,
-        )
-        return parse_questions(generation.text, self.count)
+        prompt = f"Write {self.count} questions about this document.\n\nDOCUMENT: {filename}\n\n"
+        if avoid:
+            prompt += (
+                "Do not repeat or reword any of these questions; "
+                "ask about other details instead:\n"
+                + "\n".join(f"- {q}" for q in avoid)
+                + "\n\n"
+            )
+        prompt += f"TEXT:\n{sample}"
+
+        generation = self.llm.generate(SYSTEM_INSTRUCTION, prompt, self.models)
+        questions = parse_questions(generation.text, self.count)
+        seen = {normalize(q) for q in avoid}
+        return [q for q in questions if normalize(q) not in seen]
 
     def safe_generate(self, texts: list[str], filename: str) -> list[str]:
         """Like generate(), but never raises — suggestions are optional."""
@@ -58,16 +75,29 @@ class QuestionSuggester:
             return []
 
     @staticmethod
-    def _sample(texts: list[str]) -> str:
-        """Pick passages spread across the document, within a size budget."""
+    def _sample(texts: list[str], shuffle: bool = False) -> str:
+        """Pick passages spread across the document, within a size budget.
+
+        With shuffle=True the passages are picked at random, so repeated
+        calls see different parts of a long document.
+        """
         if not texts:
             return ""
         if len(texts) <= 4:
-            picked = texts
+            picked = list(texts)
+            if shuffle:
+                random.shuffle(picked)
+        elif shuffle:
+            picked = [texts[i] for i in sorted(random.sample(range(len(texts)), 4))]
         else:
             step = (len(texts) - 1) / 3
             picked = [texts[round(i * step)] for i in range(4)]
         return "\n\n---\n\n".join(picked)[:MAX_CONTEXT_CHARS]
+
+
+def normalize(question: str) -> str:
+    """Compare questions ignoring case, spacing and the trailing '?'."""
+    return " ".join(question.lower().split()).rstrip("?").strip()
 
 
 def parse_questions(raw: str, limit: int) -> list[str]:

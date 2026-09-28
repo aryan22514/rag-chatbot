@@ -471,7 +471,7 @@
       <div class="spec"><b data-count="768">0</b><span>numbers per vector</span><p>Truncated from 3,072 — a quarter of the storage for almost the same accuracy.</p></div>
       <div class="spec"><b data-count="5">0</b><span>passages per answer</span><p>The closest matches by cosine similarity, and nothing else.</p></div>
       <div class="spec hot"><b data-count="0">0</b><span>outside facts</span><p>The model is instructed to answer only from your passages — or say it can't.</p></div>
-      <div class="spec"><b data-count="49">0</b><span>tests passing</span><p>Chunking, every API path and suggested questions — run on every push by GitHub Actions.</p></div>
+      <div class="spec"><b data-count="54">0</b><span>tests passing</span><p>Chunking, every API path and suggested questions — run on every push by GitHub Actions.</p></div>
     </div>
   </div>
 </section>
@@ -1076,12 +1076,14 @@ $$(".rv").forEach((el) => io.observe(el));
 const live = {
   status: $("#liveStatus"), form: $("#liveForm"), input: $("#liveInput"), btn: $("#liveBtn"),
   chips: $("#liveChips"), out: $("#liveOut"), docs: 0, busy: false, suggestedFor: 0,
+  pool: [], asked: new Set(), loadingMore: false,
 };
+const norm = (q) => q.toLowerCase().replace(/\s+/g, " ").trim().replace(/\?+$/, "");
 const REFUSAL = /couldn[’']?t find that in your documents|no documents have been uploaded/i;
 
-async function api(path) {
+async function api(path, opts = {}) {
   let res;
-  try { res = await fetch("/api" + path); }
+  try { res = await fetch("/api" + path, opts); }
   catch (_) { throw Object.assign(new Error("network"), { network: true }); }
   let data = null;
   try { data = await res.json(); } catch (_) {}
@@ -1120,14 +1122,42 @@ async function checkLive() {
 
 async function loadLiveSuggestions() {
   try {
-    const { suggestions } = await api("/suggestions?limit=3");
+    const { suggestions } = await api("/suggestions?limit=20");
     if (!suggestions || !suggestions.length) return;
-    live.chips.innerHTML = suggestions.map((s) =>
-      `<button type="button" data-q="${esc(s.question)}" title="Suggested from ${esc(s.source)}">${esc(s.question)}</button>`
-    ).join("");
+    live.pool = suggestions;
     live.input.placeholder = "Ask something in " + suggestions[0].source + "…";
-    checkLiveButtons();
+    renderLiveChips();
   } catch (_) {}
+}
+
+/* Show three questions not asked yet; once all are asked, fetch a new set */
+function renderLiveChips() {
+  const open = live.pool.filter((s) => !live.asked.has(norm(s.question))).slice(0, 3);
+  if (!open.length && live.pool.length) { loadMoreLive(); return; }
+  live.chips.innerHTML = open.map((s) =>
+    `<button type="button" data-q="${esc(s.question)}" title="Suggested from ${esc(s.source)}">${esc(s.question)}</button>`
+  ).join("");
+  checkLiveButtons();
+}
+
+async function loadMoreLive() {
+  if (live.loadingMore) return;
+  live.loadingMore = true;
+  live.chips.innerHTML = `<span style="font-size:13px;color:var(--ink-3)">Writing new questions from your documents…</span>`;
+  try {
+    const asked = [...new Set([...live.asked, ...live.pool.map((s) => s.question)])].slice(-500);
+    const { suggestions } = await api("/suggestions/more", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ asked, limit: 6 }),
+    });
+    live.loadingMore = false;
+    if (suggestions && suggestions.length) { live.pool = suggestions.concat(live.pool); renderLiveChips(); }
+    else live.chips.innerHTML = "";
+  } catch (_) {
+    live.loadingMore = false;
+    live.chips.innerHTML = "";
+  }
 }
 
 function renderAnswer(text) {
@@ -1146,6 +1176,8 @@ async function liveAsk(q) {
     const d = await api(`/ask?q=${encodeURIComponent(q)}&top_k=5`);
     const secs = ((performance.now() - t0) / 1000).toFixed(1);
     const refused = REFUSAL.test(d.answer || "");
+    live.asked.add(norm(q));
+    renderLiveChips();
     const seen = new Set();
     const srcs = (d.sources || []).filter((s) => { const k = s.source + "#" + s.chunk_index; if (seen.has(k)) return false; seen.add(k); return true; });
     live.out.innerHTML = `

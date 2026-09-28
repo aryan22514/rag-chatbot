@@ -98,3 +98,51 @@ def test_missing_questions_are_generated_on_request_and_cached(client):
 
     assert store.get_questions(doc_id) == [s["question"] for s in first]
     client.delete("/api/reset")
+
+
+# ── a new set once everything has been asked ──────────────────────────
+
+
+def test_more_questions_for_empty_library(client):
+    client.delete("/api/reset")
+    res = client.post("/api/suggestions/more", json={"asked": []})
+    assert res.json() == {"suggestions": []}
+
+
+def test_more_questions_are_new_and_saved(client):
+    first = upload(client).json()["suggested_questions"]
+
+    res = client.post("/api/suggestions/more", json={"asked": first})
+    assert res.status_code == 200
+    fresh = [s["question"] for s in res.json()["suggestions"]]
+    assert len(fresh) == 4
+    assert not {q.lower() for q in fresh} & {q.lower() for q in first}
+
+    # Saved newest first, so a reload shows the new set
+    stored = [s["question"] for s in client.get("/api/suggestions?limit=20").json()["suggestions"]]
+    assert stored[:4] == fresh
+    assert stored[4:] == first
+
+
+def test_every_refresh_gives_a_different_set(client):
+    seen = [s["question"] for s in client.get("/api/suggestions?limit=20").json()["suggestions"]]
+    for _ in range(2):
+        batch = client.post("/api/suggestions/more", json={"asked": seen}).json()["suggestions"]
+        questions = [s["question"] for s in batch]
+        assert questions and not set(questions) & set(seen)
+        seen += questions
+
+
+def test_more_questions_when_ai_is_busy(client, rate_limit):
+    from app.config import settings
+
+    rate_limit(*settings.suggestion_models)
+    res = client.post("/api/suggestions/more", json={"asked": ["anything?"]})
+    assert res.status_code == 429
+    assert "busy" in res.json()["detail"]
+    client.delete("/api/reset")
+
+
+def test_more_questions_validates_input(client):
+    res = client.post("/api/suggestions/more", json={"asked": [], "limit": 0})
+    assert res.status_code == 422

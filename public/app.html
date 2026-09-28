@@ -238,6 +238,12 @@
   .next { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 2px 2px 0; animation: rise .3s ease-out; }
   .next-label { font-size: 11px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: .07em; margin-right: 2px; }
   .next .chip { font-size: 13px; padding: 6px 12px; }
+  .next .chip-skel { height: 31px; }
+  .chip.more { display: inline-flex; align-items: center; gap: 6px; border-style: dashed; color: var(--accent); background: transparent; }
+  .chip.more svg { flex: none; }
+  .chip.more.spin svg { animation: spin 1s linear infinite; }
+  .more-note { font-size: 13px; color: var(--ink-3); }
+  @keyframes spin { to { transform: rotate(360deg); } }
 
   /* turns */
   .turns { display: flex; flex-direction: column; gap: 30px; }
@@ -519,9 +525,12 @@ let uploading = 0;
 let online = null;
 let suggestions = [];
 let suggestionsLoading = false;
+let moreState = "idle"; // idle | loading | failed | exhausted — for "new set of questions"
+let moreRequest = null;
 let docKey = "";
 const OFF_TOPIC = "What is the stock price of Tesla?";
 
+const REFRESH_ICON = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg>';
 const X_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>';
 const EV_EMPTY = `
   <div class="ev-empty">
@@ -612,6 +621,7 @@ async function refresh() {
 
 /* ───── suggested questions (written from your documents) ───── */
 async function loadSuggestions() {
+  moreState = "idle";
   if (!docs.length) { suggestions = []; renderChips(); return; }
   suggestionsLoading = true;
   renderChips();
@@ -629,42 +639,109 @@ function chipHTML(s, showSource) {
     showSource ? `<span class="src">${esc(s.source)}</span>` : ""}</button>`;
 }
 
+/* Questions compare equal ignoring case, spacing and the trailing "?" */
+const norm = (q) => q.toLowerCase().replace(/\s+/g, " ").trim().replace(/\?+$/, "");
+
+/* Suggestions the user hasn't asked yet (failed asks don't count) */
+function unasked() {
+  const asked = new Set(turns.filter((t) => !t.error).map((t) => norm(t.q)));
+  return suggestions.filter((s) => !asked.has(norm(s.question)));
+}
+
+function moreButton(label = "New questions") {
+  const loading = moreState === "loading";
+  return `<button class="chip more${loading ? " spin" : ""}" type="button" data-more ${loading ? "disabled" : ""}>${REFRESH_ICON}${loading ? "Writing…" : label}</button>`;
+}
+
+/* Ask the server for a fresh set of questions it hasn't suggested before.
+   Runs automatically once every suggestion has been asked. */
+function loadMoreSuggestions() {
+  if (moreRequest || !docs.length) return moreRequest;
+  moreState = "loading";
+  renderChips();
+  rerenderNext();
+  moreRequest = (async () => {
+    const asked = [...new Set([...turns.map((t) => t.q), ...suggestions.map((s) => s.question)])].slice(-500);
+    try {
+      const d = await api("/suggestions/more", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ asked, limit: 6 }),
+      });
+      const fresh = d.suggestions || [];
+      suggestions = fresh.concat(suggestions);
+      moreState = fresh.length ? "idle" : "exhausted";
+    } catch (e) {
+      moreState = "failed";
+      toast(e.status === 429 ? "The AI service is busy. Try for new questions in a minute." : "Couldn't write new questions. Try again.", "warn");
+    } finally {
+      moreRequest = null;
+    }
+    renderChips();
+    rerenderNext();
+  })();
+  return moreRequest;
+}
+
 function renderChips() {
   const offTopic = `<button class="chip" type="button" data-q="${OFF_TOPIC}">${OFF_TOPIC}<em>tests refusal</em></button>`;
-  const manyDocs = new Set(suggestions.map((s) => s.source)).size > 1;
+  const open = unasked();
+  const manyDocs = new Set(open.map((s) => s.source)).size > 1;
+  const skeleton = [210, 260, 180].map((w) => `<span class="chip-skel" style="width:${w}px"></span>`).join("");
   if (!docs.length) {
     el.tryLabel.textContent = "Suggested questions";
     el.chips.innerHTML = `<p class="try-note">Upload a document and questions written from its contents will appear here.</p>`;
   } else if (suggestionsLoading && !suggestions.length) {
     el.tryLabel.textContent = "Reading your documents for questions…";
-    el.chips.innerHTML = [210, 260, 180].map((w) => `<span class="chip-skel" style="width:${w}px"></span>`).join("");
+    el.chips.innerHTML = skeleton;
   } else if (!suggestions.length) {
     el.tryLabel.textContent = "Try asking";
     el.chips.innerHTML = offTopic;
+  } else if (!open.length) {
+    // Everything suggested has been asked: fetch a new set
+    if (moreState === "idle") { loadMoreSuggestions(); return; }
+    el.tryLabel.textContent = moreState === "loading" ? "Writing new questions…" : "You've asked every suggested question";
+    el.chips.innerHTML = moreState === "loading" ? skeleton : moreButton(moreState === "failed" ? "Try again" : "Try for more") + offTopic;
   } else {
     el.tryLabel.textContent = "Suggested from your documents";
-    el.chips.innerHTML = suggestions.slice(0, 6).map((s) => chipHTML(s, manyDocs)).join("") + offTopic;
+    el.chips.innerHTML = open.slice(0, 6).map((s) => chipHTML(s, manyDocs)).join("") + offTopic + moreButton();
   }
 }
 
 /* Follow-ups: unasked suggestions from the documents this answer cited */
 function nextQuestions(t) {
-  const asked = new Set(turns.map((x) => x.q.trim().toLowerCase()));
   const cited = new Set((t.sources || []).map((s) => s.source));
-  const fresh = suggestions.filter((s) => !asked.has(s.question.trim().toLowerCase()));
+  const fresh = unasked();
   const fromCited = t.refused ? [] : fresh.filter((s) => cited.has(s.source));
   return (fromCited.length ? fromCited : fresh).slice(0, 3);
+}
+
+function rerenderNext() {
+  const last = turns.length - 1;
+  if (last >= 0 && !turns[last].pending) renderNext(last);
 }
 
 function renderNext(i) {
   el.turns.querySelectorAll(".next").forEach((n) => n.remove());
   const t = turns[i];
-  if (!t || t.pending || t.error) return;
+  if (!t || t.pending || t.error || !docs.length) return;
   const qs = nextQuestions(t);
-  if (!qs.length) return;
+  let html;
+  if (qs.length) {
+    html = `<span class="next-label">${t.refused ? "Try instead" : "Ask next"}</span>` + qs.map((s) => chipHTML(s, false)).join("") + moreButton();
+  } else if (moreState === "idle" && suggestions.length) {
+    loadMoreSuggestions(); // re-renders this box in its loading state
+    return;
+  } else if (moreState === "loading") {
+    html = `<span class="next-label">Writing new questions</span>` + [200, 240, 170].map((w) => `<span class="chip-skel" style="width:${w}px"></span>`).join("");
+  } else if (suggestions.length) {
+    html = `<span class="more-note">${moreState === "failed" ? "Couldn't write new questions." : "You've asked every suggested question."}</span>` + moreButton(moreState === "failed" ? "Try again" : "Try for more");
+  } else {
+    return;
+  }
   const box = document.createElement("div");
   box.className = "next";
-  box.innerHTML = `<span class="next-label">${t.refused ? "Try instead" : "Ask next"}</span>` + qs.map((s) => chipHTML(s, false)).join("");
+  box.innerHTML = html;
   document.getElementById("turn-" + i).appendChild(box);
   el.thread.scrollTop = el.thread.scrollHeight;
 }
@@ -985,11 +1062,13 @@ document.addEventListener("keydown", (e) => {
 });
 
 el.chips.addEventListener("click", (e) => {
+  if (e.target.closest("[data-more]")) { loadMoreSuggestions(); return; }
   const c = e.target.closest(".chip");
   if (c && !c.disabled) ask(c.dataset.q);
 });
 
 el.turns.addEventListener("click", (e) => {
+  if (e.target.closest("[data-more]")) { loadMoreSuggestions(); return; }
   const nextChip = e.target.closest(".next .chip");
   if (nextChip) { ask(nextChip.dataset.q); return; }
   const retry = e.target.closest(".retry");
