@@ -6,7 +6,7 @@ whenever the server restarts).
 """
 
 from collections import defaultdict
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 
 class DailyQuota:
@@ -15,7 +15,7 @@ class DailyQuota:
         self._used: defaultdict[str, int] = defaultdict(int)
 
     def _roll_over(self) -> None:
-        today = datetime.now(UTC).strftime("%Y-%m-%d")
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         if today != self._day:
             self._day = today
             self._used.clear()
