@@ -40,12 +40,20 @@ FAKE_QUESTIONS = [
 
 
 class FakeInteractions:
-    fail = False  # every call fails (e.g. quota exhausted)
+    fail = False  # every call fails with a server error
     suggest_fail = False  # only question generation fails
+    limited: set = set()  # models that answer with a 429 rate-limit error
+    calls: list = []  # every model called, in order
 
     def create(self, model, system_instruction, input):
+        FakeInteractions.calls.append(model)
+        if model in FakeInteractions.limited:
+            raise RuntimeError(
+                f"Error code: 429 - Rate limit exceeded for model {model} "
+                "(limit: 20 requests per day on Free Tier). Please retry in 59s."
+            )
         if FakeInteractions.fail:
-            raise RuntimeError("429 quota exceeded")
+            raise RuntimeError("500 internal server error")
         if "example questions" in system_instruction:
             if FakeInteractions.suggest_fail:
                 raise RuntimeError("503 model overloaded")
@@ -84,3 +92,19 @@ def suggestions_down():
     FakeInteractions.suggest_fail = True
     yield
     FakeInteractions.suggest_fail = False
+
+
+class RateLimiter:
+    """rate_limit("model-a", ...) makes those models return 429s; .calls logs every model used."""
+
+    calls = FakeInteractions.calls
+
+    def __call__(self, *models):
+        FakeInteractions.limited = set(models)
+
+
+@pytest.fixture
+def rate_limit():
+    FakeInteractions.calls.clear()
+    yield RateLimiter()
+    FakeInteractions.limited = set()

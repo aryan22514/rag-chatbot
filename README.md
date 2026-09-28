@@ -47,8 +47,9 @@ flowchart LR
 - **Suggested questions from your own documents**: on upload, Gemini writes questions the PDF actually answers; shown as chips, plus "ask next" follow-ups after each answer drawn from the documents it cited
 - **Scroll-driven landing page** that animates the whole pipeline, plus a live "try it" box wired to the API
 - **Chat app** with drag-and-drop upload, evidence panel with keyword highlighting, delete / clear library
+- **Built for free-tier limits**: automatic fallback across Gemini models when one is rate limited, an answer cache so repeat questions cost nothing, and a clear 429 with `Retry-After` when every model is out of quota
 - **Robust API**: clear errors for scanned or corrupt PDFs, AI-service failures (502), and invalid input (422)
-- **Tested & containerised**: 32 pytest tests (Gemini is faked, so tests run offline), Docker image, GitHub Actions CI
+- **Tested & containerised**: 40 pytest tests (Gemini is faked, so tests run offline), Docker image, GitHub Actions CI
 
 ![App](docs/app.jpg)
 
@@ -82,6 +83,19 @@ docker run -p 8000:8000 -e GEMINI_API_KEY=your_key ghcr.io/aryan22514/rag-chatbo
 
 Vectors persist in the `chroma-data` volume across restarts.
 
+## Free-tier limits
+
+Free Gemini API keys have small daily quotas **per model** (for example 20 requests/day). The app is built around that:
+
+| Situation | What happens |
+|---|---|
+| Main model (`gemini-3.8-flash`) is rate limited | Retries on `gemini-3.6-flash`, then `gemini-3.5-flash-lite`; the answer shows which model replied |
+| You ask a question you've asked before | Answered from an in-memory cache: no API call, works even when out of quota |
+| Every model is out of quota | `429` with a `Retry-After` header and a plain-English message in the UI |
+| Uploading a document | Suggested questions use the cheapest model first, so uploads don't spend the main model's quota |
+
+Change the order or models in `.env` (see `.env.example`). Your actual limits are shown in [Google AI Studio](https://aistudio.google.com/rate-limit).
+
 ## API
 
 | Method | Endpoint | Description |
@@ -108,7 +122,8 @@ app/
     ├── embeddings.py          # Gemini embedding client (batched)
     ├── vector_store.py        # ChromaDB: add, search, list, delete, stored questions
     ├── suggestions.py         # Gemini-written questions each document can answer
-    └── rag_chain.py           # Retrieve → build grounded prompt → answer
+    ├── rag_chain.py           # Retrieve → build grounded prompt → answer (+ answer cache)
+    └── llm.py                 # Gemini calls with model fallback on rate limits
 public/
 ├── index.html               # Scroll-driven landing page
 ├── app.html                 # Chat app
@@ -117,6 +132,7 @@ tests/
 ├── test_chunking.py         # Chunking contract: overlap, order, counts
 ├── test_api.py              # End-to-end API incl. every error path
 ├── test_suggestions.py      # Question parsing, storage, caching, failure handling
+├── test_llm.py              # Rate limits: fallback order, cache, 429 + Retry-After
 └── conftest.py              # Fake Gemini client for offline tests
 .github/workflows/ci.yml     # Lint → test → Docker build → smoke test → publish
 ```
@@ -126,7 +142,7 @@ tests/
 Every push and pull request runs **GitHub Actions**:
 
 1. **Lint** with `ruff`
-2. **Test** with `pytest` (32 tests, Gemini faked, no API key or cost)
+2. **Test** with `pytest` (40 tests, Gemini faked, no API key or cost)
 3. **Build** the Docker image and **smoke-test** the running container
 4. On `main`: **publish** the image to GitHub Container Registry (`ghcr.io/aryan22514/rag-chatbot`)
 

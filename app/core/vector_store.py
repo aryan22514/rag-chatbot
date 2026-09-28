@@ -83,6 +83,10 @@ class VectorStore:
 
         return list(docs.values())
 
+    def fingerprint(self) -> int:
+        """Changes whenever documents are added or removed (used to key the answer cache)."""
+        return hash(tuple(sorted(self.collection.get(include=[])["ids"])))
+
     def stats(self) -> dict:
         return {
             "total_chunks": self.collection.count(),

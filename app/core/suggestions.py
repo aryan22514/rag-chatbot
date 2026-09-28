@@ -12,9 +12,8 @@ import json
 import logging
 import re
 
-from google import genai
-
 from app.config import settings
+from app.core.llm import LLM
 
 logger = logging.getLogger(__name__)
 
@@ -31,9 +30,9 @@ MAX_CONTEXT_CHARS = 9000
 
 
 class QuestionSuggester:
-    def __init__(self, count: int | None = None):
-        self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
-        self.model = settings.LLM_MODEL
+    def __init__(self, llm: LLM | None = None, count: int | None = None):
+        self.llm = llm or LLM()
+        self.models = settings.suggestion_models
         self.count = count or settings.SUGGESTION_COUNT
 
     def generate(self, texts: list[str], filename: str) -> list[str]:
@@ -42,15 +41,13 @@ class QuestionSuggester:
         if not sample:
             return []
 
-        interaction = self.client.interactions.create(
-            model=self.model,
-            system_instruction=SYSTEM_INSTRUCTION,
-            input=(
-                f"Write {self.count} questions about this document.\n\n"
-                f"DOCUMENT: {filename}\n\nTEXT:\n{sample}"
-            ),
+        generation = self.llm.generate(
+            SYSTEM_INSTRUCTION,
+            f"Write {self.count} questions about this document.\n\n"
+            f"DOCUMENT: {filename}\n\nTEXT:\n{sample}",
+            self.models,
         )
-        return parse_questions(interaction.output_text, self.count)
+        return parse_questions(generation.text, self.count)
 
     def safe_generate(self, texts: list[str], filename: str) -> list[str]:
         """Like generate(), but never raises — suggestions are optional."""

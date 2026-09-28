@@ -1156,7 +1156,8 @@ async function liveAsk(q) {
         <div>${srcs.map((s) => `<span class="src-chip"><b>${(s.score * 100).toFixed(1)}%</b>${esc(s.source)} · chunk ${esc(s.chunk_index)}</span>`).join("")}</div>
       </div>`;
   } catch (e) {
-    live.out.innerHTML = `<div class="live-card"><span class="badge warn">Request failed</span><div class="ans">${esc(e.message)}</div></div>`;
+    const limited = /free usage limit|rate limit|429/i.test(e.message);
+    live.out.innerHTML = `<div class="live-card"><span class="badge warn">${limited ? "Daily AI limit reached" : "Request failed"}</span><div class="ans">${esc(e.message)}</div></div>`;
   }
   live.busy = false; checkLiveButtons();
 }

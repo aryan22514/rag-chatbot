@@ -63,7 +63,7 @@ def test_top_k_is_validated(client):
 def test_llm_failure_is_reported_not_crashed(client, llm_down):
     res = client.get("/api/ask", params={"q": "sick leave"})
     assert res.status_code == 502
-    assert "quota" in res.json()["detail"]
+    assert "internal server error" in res.json()["detail"]
 
 
 def test_delete_document(client):

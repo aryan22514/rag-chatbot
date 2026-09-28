@@ -257,6 +257,10 @@
   .badge.warn { background: var(--warn-soft); color: var(--warn); }
   .badge.bad { background: var(--bad-soft); color: var(--bad); }
   .a-time { margin-left: auto; font-size: 11px; color: var(--ink-3); }
+  .a-meta { font-family: var(--mono); font-size: 11px; color: var(--ink-3); }
+  .a-meta b { font-weight: 500; color: var(--ink-2); }
+  .hint { margin-top: .6em; font-size: 13.5px; color: var(--ink-3); }
+  .hint code { font-family: var(--mono); font-size: 12px; background: var(--surface-2); padding: 1px 5px; border-radius: 4px; color: var(--ink-2); }
   .a-body { padding: 10px 16px 15px; font-size: 15.5px; line-height: 1.62; overflow-wrap: anywhere; }
   .a-body p + p, .a-body p + ul, .a-body ul + p { margin-top: .6em; }
   .a-body ul { padding-left: 1.2em; }
@@ -809,6 +813,16 @@ function answerHTML(t, i) {
         </div>
       </article>`;
   }
+  if (t.error && t.status === 429) {
+    return `
+      <article class="a">
+        <div class="a-head"><span class="badge warn">Daily AI limit reached</span><span class="a-time mono">${t.time}</span></div>
+        <div class="a-body">
+          <p>${esc(t.error)}</p>
+          <p class="hint">Questions you've already asked still work — they're answered from the cache. To raise the limit, add billing to your key in Google AI Studio, or set different models with <code>LLM_FALLBACK_MODELS</code> in <code>.env</code>.</p>
+        </div>
+      </article>`;
+  }
   if (t.error) {
     return `
       <article class="a">
@@ -832,7 +846,7 @@ function answerHTML(t, i) {
     <div class="inline-evidence" id="inline-${i}">${evidenceHTML(t)}</div>` : "";
   return `
     <article class="a">
-      <div class="a-head">${badge}<span class="a-time mono">${t.time}</span></div>
+      <div class="a-head">${badge}${t.model ? `<span class="a-meta">via <b>${esc(t.model)}</b></span>` : ""}<span class="a-time mono">${t.cached ? "cached" : t.time}</span></div>
       <div class="a-body">${renderAnswer(t.answer)}</div>
       ${foot}
     </article>`;
@@ -890,9 +904,9 @@ async function ask(text) {
   try {
     const d = await api(`/ask?q=${encodeURIComponent(q)}&top_k=${TOP_K}`);
     const answer = d.answer || "";
-    Object.assign(turn, { pending: false, answer, sources: dedupe(d.sources), refused: REFUSAL.test(answer), time: since(t0) });
+    Object.assign(turn, { pending: false, answer, sources: dedupe(d.sources), refused: REFUSAL.test(answer), time: since(t0), model: d.model, cached: d.cached });
   } catch (e) {
-    Object.assign(turn, { pending: false, error: e.message, sources: [], time: since(t0) });
+    Object.assign(turn, { pending: false, error: e.message, status: e.status, sources: [], time: since(t0) });
   }
 
   drawTurn(i);

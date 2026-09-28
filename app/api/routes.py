@@ -7,6 +7,7 @@ from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 
 from app.config import settings
 from app.core.document_processor import DocumentProcessor
+from app.core.llm import LLM, RateLimitedError, is_rate_limited
 from app.core.rag_chain import RagChain
 from app.core.suggestions import QuestionSuggester
 from app.core.vector_store import VectorStore
@@ -17,8 +18,23 @@ processor = DocumentProcessor(
     chunk_overlap=settings.CHUNK_OVERLAP,
 )
 store = VectorStore()
-rag = RagChain(store)
-suggester = QuestionSuggester()
+llm = LLM()
+rag = RagChain(store, llm)
+suggester = QuestionSuggester(llm)
+
+
+def ai_error(error: Exception, doing: str) -> HTTPException:
+    """Turn a Gemini failure into a clear HTTP error for the UI."""
+    if isinstance(error, RateLimitedError):
+        headers = {"Retry-After": str(error.retry_after)} if error.retry_after else None
+        return HTTPException(status_code=429, detail=str(error), headers=headers)
+    if is_rate_limited(error):
+        return HTTPException(
+            status_code=429,
+            detail=f"Gemini's free usage limit was reached while {doing}. "
+            "Limits reset daily; a paid API key removes them.",
+        )
+    return HTTPException(status_code=502, detail=f"The AI service returned an error: {error}")
 
 
 @router.post("/upload")
@@ -51,7 +67,7 @@ async def upload_document(file: UploadFile = File(...)):
     try:
         stored = store.add_chunks(chunks, document_id)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Embedding failed: {e}") from e
+        raise ai_error(e, "embedding your document") from e
 
     questions = suggester.safe_generate([c.text for c in chunks], file.filename)
     if questions:
@@ -86,9 +102,7 @@ def ask(q: str = Query(..., min_length=1), top_k: int = Query(5, ge=1, le=20)):
     try:
         return rag.ask(q, top_k)
     except Exception as e:
-        raise HTTPException(
-            status_code=502, detail=f"The AI service returned an error: {e}"
-        ) from e
+        raise ai_error(e, "answering your question") from e
 
 
 @router.delete("/documents/{document_id}")
