@@ -315,7 +315,7 @@
   <div class="hero-inner">
     <p class="eyebrow">Retrieval-augmented answers for your PDFs</p>
     <h1>Ask your documents.<br><span class="sweep">Get answers with receipts.</span></h1>
-    <p class="sub">Upload a PDF, ask in plain English, and get an answer written only from your files — with the exact passages attached.</p>
+    <p class="sub">Upload a PDF or Word file, ask in plain English, and get an answer written only from your files — with the exact passages attached.</p>
     <div class="hero-ctas">
       <a class="btn primary" href="app.html">Open the app
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
@@ -471,7 +471,7 @@
       <div class="spec"><b data-count="768">0</b><span>numbers per vector</span><p>Truncated from 3,072 — a quarter of the storage for almost the same accuracy.</p></div>
       <div class="spec"><b data-count="5">0</b><span>passages per answer</span><p>The closest matches by cosine similarity, and nothing else.</p></div>
       <div class="spec hot"><b data-count="0">0</b><span>outside facts</span><p>The model is instructed to answer only from your passages — or say it can't.</p></div>
-      <div class="spec"><b data-count="32">0</b><span>tests passing</span><p>Chunking, every API path and suggested questions — run on every push by GitHub Actions.</p></div>
+      <div class="spec"><b data-count="49">0</b><span>tests passing</span><p>Chunking, every API path and suggested questions — run on every push by GitHub Actions.</p></div>
     </div>
   </div>
 </section>
@@ -483,7 +483,7 @@
     <h2 class="big rv d1">Six parts, one job each.</h2>
     <div class="stack-grid">
       <div class="tool rv"><p class="role">API</p><h3>FastAPI</h3><p>Upload, ask, list and delete endpoints — plus this page. Swagger docs for free.</p></div>
-      <div class="tool rv d1"><p class="role">Read</p><h3>pypdf</h3><p>Rebuilds readable text from the positioned glyphs inside every PDF page.</p></div>
+      <div class="tool rv d1"><p class="role">Read</p><h3>pypdf + python-docx</h3><p>Pulls text from PDFs page by page — so answers can cite page numbers — plus Word and text files.</p></div>
       <div class="tool rv d2"><p class="role">Embed</p><h3>gemini-embedding-001</h3><p>Turns passages and questions into 768-number vectors, tuned for retrieval.</p></div>
       <div class="tool rv"><p class="role">Store</p><h3>ChromaDB</h3><p>A local vector database with an HNSW index for fast cosine-similarity search.</p></div>
       <div class="tool rv d1"><p class="role">Answer</p><h3>Gemini 3.8 Flash</h3><p>Writes the reply from retrieved passages only, under a strict grounding instruction.</p></div>
@@ -1155,7 +1155,7 @@ async function liveAsk(q) {
           <span class="mono" style="margin-left:auto;font-size:11.5px;color:var(--ink-3)">${secs}s</span>
         </header>
         <div class="ans">${renderAnswer(d.answer || "")}</div>
-        <div>${srcs.map((s) => `<span class="src-chip"><b>${(s.score * 100).toFixed(1)}%</b>${esc(s.source)} · chunk ${esc(s.chunk_index)}</span>`).join("")}</div>
+        <div>${srcs.map((s) => `<span class="src-chip"><b>${(s.score * 100).toFixed(1)}%</b>${esc(s.source)} · ${s.page_start == null ? "chunk " + esc(s.chunk_index) : (s.page_start === s.page_end ? "p. " + s.page_start : "pp. " + s.page_start + "–" + s.page_end)}</span>`).join("")}</div>
       </div>`;
   } catch (e) {
     const busy = e.status === 429;

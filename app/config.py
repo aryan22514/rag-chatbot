@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     SUGGESTION_MODEL: str = "gemini-3.5-flash-lite"
     TOP_K: int = 5
     SUGGESTION_COUNT: int = 4
+    MAX_UPLOAD_MB: float = 20
 
     @property
     def llm_models(self) -> list[str]:

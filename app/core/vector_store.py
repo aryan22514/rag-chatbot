@@ -16,7 +16,9 @@ class VectorStore:
             metadata={"hnsw:space": "cosine"},
         )
 
-    def add_chunks(self, chunks: list[DocumentChunk], document_id: str) -> int:
+    def add_chunks(
+        self, chunks: list[DocumentChunk], document_id: str, content_hash: str | None = None
+    ) -> int:
         if not chunks:
             return 0
 
@@ -27,17 +29,32 @@ class VectorStore:
             ids=[f"{document_id}_{c.chunk_index}" for c in chunks],
             embeddings=vectors,
             documents=texts,
-            metadatas=[
-                {
-                    "source": c.source,
-                    "chunk_index": c.chunk_index,
-                    "document_id": document_id,
-                }
-                for c in chunks
-            ],
+            metadatas=[self._metadata(c, document_id, content_hash) for c in chunks],
         )
 
         return len(chunks)
+
+    @staticmethod
+    def _metadata(chunk: DocumentChunk, document_id: str, content_hash: str | None) -> dict:
+        # Chroma metadata can't hold None, so optional fields are only added when set
+        meta = {
+            "source": chunk.source,
+            "chunk_index": chunk.chunk_index,
+            "document_id": document_id,
+        }
+        if chunk.page_start is not None:
+            meta["page_start"] = chunk.page_start
+            meta["page_end"] = chunk.page_end
+        if content_hash:
+            meta["content_hash"] = content_hash
+        return meta
+
+    def find_by_hash(self, content_hash: str) -> str | None:
+        """Name of an already-stored document with identical content, if any."""
+        found = self.collection.get(
+            where={"content_hash": content_hash}, limit=1, include=["metadatas"]
+        )
+        return found["metadatas"][0]["source"] if found["ids"] else None
 
     def search(self, question: str, top_k: int = 5) -> list[dict]:
         if self.collection.count() == 0:
@@ -62,6 +79,8 @@ class VectorStore:
                 "text": text,
                 "source": meta["source"],
                 "chunk_index": meta["chunk_index"],
+                "page_start": meta.get("page_start"),
+                "page_end": meta.get("page_end"),
                 "score": round(1 - distance, 4),
             })
 

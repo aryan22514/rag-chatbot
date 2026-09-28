@@ -164,6 +164,8 @@
     background: var(--bad-soft); color: var(--bad);
     display: grid; place-items: center; font-family: var(--mono); font-size: 8.5px; font-weight: 500; letter-spacing: .04em;
   }
+  .doc-icon.docx { background: var(--accent-soft); color: var(--accent); }
+  .doc-icon.txt, .doc-icon.md { background: var(--surface-2); color: var(--ink-2); }
   .doc-meta { min-width: 0; flex: 1; }
   .doc-name { font-size: 13.5px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .doc-sub { font-family: var(--mono); font-size: 11px; color: var(--ink-3); }
@@ -272,6 +274,8 @@
   .mini-meters { display: inline-flex; gap: 2px; align-items: flex-end; height: 14px; }
   .mini-meters i { width: 4px; border-radius: 1px; background: var(--accent); }
   .a-foot .best { margin-left: auto; font-size: 11.5px; color: var(--ink-3); white-space: nowrap; }
+  .copy-btn { width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; color: var(--ink-3); flex: none; }
+  .copy-btn:hover { background: var(--surface-2); color: var(--ink); }
   .inline-evidence { display: none; padding: 14px 16px 16px; border-top: 1px solid var(--line); flex-direction: column; gap: 10px; }
 
   .a.pending .a-body { display: flex; flex-direction: column; gap: 10px; }
@@ -406,13 +410,13 @@
     <div class="panel-head"><h2>Library</h2><span class="muted mono" id="libCount">0</span></div>
 
     <label class="drop" id="drop" tabindex="0">
-      <input type="file" id="file" accept="application/pdf,.pdf" multiple hidden>
+      <input type="file" id="file" accept=".pdf,.docx,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown" multiple hidden>
       <span class="drop-icon" aria-hidden="true">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg>
       </span>
-      <strong>Drop PDFs here</strong>
+      <strong>Drop files here</strong>
       <span>or <u>browse files</u></span>
-      <small>Text-based PDFs · scanned images can't be read</small>
+      <small>PDF, Word, .txt or .md · up to 20 MB</small>
     </label>
 
     <div class="upload-card" id="uploadCard" hidden>
@@ -434,10 +438,10 @@
       <section class="hero" id="hero">
         <p class="eyebrow">Retrieval-augmented answers</p>
         <h1>Ask your documents.<br><span class="hl">Get answers with receipts.</span></h1>
-        <p class="lede">Drop in a PDF and ask in plain English. Every answer is written only from passages in your files — and shows you exactly which ones it used.</p>
+        <p class="lede">Drop in a PDF, Word or text file and ask in plain English. Every answer is written only from passages in your files — and shows you exactly which ones it used.</p>
 
         <ol class="pipeline" aria-label="How it works">
-          <li><span class="step">01</span><strong>Upload</strong><span class="desc">Text is pulled from every page of the PDF.</span></li>
+          <li><span class="step">01</span><strong>Upload</strong><span class="desc">Text is pulled from every page, with page numbers kept for citations.</span></li>
           <li><span class="step">02</span><strong>Chunk</strong><span class="desc">Split into 500-word passages that overlap by 50.</span></li>
           <li><span class="step">03</span><strong>Embed</strong><span class="desc">Each passage becomes a 768-number vector in ChromaDB.</span></li>
           <li><span class="step">04</span><strong>Answer</strong><span class="desc">Your question finds the closest passages; Gemini answers from them.</span></li>
@@ -630,7 +634,7 @@ function renderChips() {
   const manyDocs = new Set(suggestions.map((s) => s.source)).size > 1;
   if (!docs.length) {
     el.tryLabel.textContent = "Suggested questions";
-    el.chips.innerHTML = `<p class="try-note">Upload a PDF and questions written from its contents will appear here.</p>`;
+    el.chips.innerHTML = `<p class="try-note">Upload a document and questions written from its contents will appear here.</p>`;
   } else if (suggestionsLoading && !suggestions.length) {
     el.tryLabel.textContent = "Reading your documents for questions…";
     el.chips.innerHTML = [210, 260, 180].map((w) => `<span class="chip-skel" style="width:${w}px"></span>`).join("");
@@ -674,14 +678,14 @@ function renderLibrary() {
   el.docList.innerHTML = docs.length
     ? docs.map((d) => `
         <div class="doc">
-          <span class="doc-icon" aria-hidden="true">PDF</span>
+          <span class="doc-icon ${fileKind(d.source)}" aria-hidden="true">${fileKind(d.source).toUpperCase()}</span>
           <div class="doc-meta">
             <div class="doc-name" title="${esc(d.source)}">${esc(d.source)}</div>
             <div class="doc-sub">${plural(d.chunk_count, "passage")}</div>
           </div>
           <button class="doc-x" type="button" data-id="${esc(d.document_id)}" data-name="${esc(d.source)}" aria-label="Remove ${esc(d.source)}">${X_ICON}</button>
         </div>`).join("")
-    : `<p class="empty-lib">Your library is empty. Upload a PDF to start — the <b>sample leave policy</b> makes a good first test.</p>`;
+    : `<p class="empty-lib">Your library is empty. Upload a PDF, Word or text file to start — the <b>sample leave policy</b> makes a good first test.</p>`;
 
   renderChips();
 }
@@ -699,7 +703,7 @@ async function uploadFiles(list) {
 }
 
 async function uploadOne(file) {
-  if (!/\.pdf$/i.test(file.name)) { toast(`${file.name} isn't a PDF`, "bad"); return; }
+  if (!/\.(pdf|docx|txt|md)$/i.test(file.name)) { toast(`${file.name} isn't supported — use a PDF, Word (.docx), .txt or .md file`, "bad"); return; }
   if (docs.some((d) => d.source === file.name)) {
     toast(`${file.name} is already in your library — remove it first to re-index`, "warn");
     return;
@@ -712,7 +716,7 @@ async function uploadOne(file) {
   form.append("file", file);
   try {
     const d = await api("/upload", { method: "POST", body: form });
-    setUpload("done", file.name, `${plural(d.chunks_stored, "passage")} · ${Number(d.total_words).toLocaleString()} words`, since(t0));
+    setUpload("done", file.name, [d.pages ? plural(d.pages, "page") : null, plural(d.chunks_stored, "passage"), `${Number(d.total_words).toLocaleString()} words`].filter(Boolean).join(" · "), since(t0));
     const qs = d.suggested_questions || [];
     if (qs.length) {
       suggestions = qs.map((q) => ({ question: q, source: file.name, document_id: d.document_id })).concat(suggestions);
@@ -772,6 +776,17 @@ function inline(s) {
   return s.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/`([^`]+)`/g, "<code>$1</code>");
 }
 
+function fileKind(name) {
+  const m = /\.(pdf|docx|txt|md)$/i.exec(name || "");
+  return m ? m[1].toLowerCase() : "pdf";
+}
+
+/* "p. 2" / "pp. 1–2" for PDFs; formats without pages fall back to the chunk number */
+function whereLabel(s) {
+  if (s.page_start == null) return `chunk ${s.chunk_index}`;
+  return s.page_start === s.page_end || s.page_end == null ? `p. ${s.page_start}` : `pp. ${s.page_start}–${s.page_end}`;
+}
+
 function renderAnswer(text) {
   let html = "";
   let inList = false;
@@ -810,7 +825,7 @@ function evidenceHTML(t) {
       <div class="p-top">
         <span class="rank mono">#${k + 1}</span>
         <span class="p-src" title="${esc(s.source)}">${esc(s.source)}</span>
-        <span class="p-chunk mono">chunk ${esc(s.chunk_index)}</span>
+        <span class="p-chunk mono">${esc(whereLabel(s))}</span>
       </div>
       <div class="meter-row">
         <div class="meter"><i style="width:${clamp(s.score * 100, 3, 100)}%"></i></div>
@@ -848,6 +863,8 @@ function answerHTML(t, i) {
     : `<span class="badge good">Grounded answer</span>`;
   const n = t.sources.length;
   const meters = t.sources.map((s) => `<i style="height:${Math.round(clamp(s.score, 0.15, 1) * 14)}px"></i>`).join("");
+  const copyBtn = t.refused ? "" : `<button class="copy-btn" type="button" data-turn="${i}" aria-label="Copy answer" title="Copy answer">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>`;
   const foot = n ? `
     <div class="a-foot">
       <button class="ev-btn" type="button" data-turn="${i}">
@@ -855,6 +872,7 @@ function answerHTML(t, i) {
         ${t.refused ? "See what was searched" : `View ${plural(n, "source passage")}`}
       </button>
       <span class="best mono">best match ${pct(t.sources[0].score)}</span>
+      ${copyBtn}
     </div>
     <div class="inline-evidence" id="inline-${i}">${evidenceHTML(t)}</div>` : "";
   return `
@@ -948,7 +966,7 @@ function autosize() {
 
 function updateComposer() {
   const has = docs.length > 0;
-  el.input.placeholder = has ? "Ask about your documents…" : "Upload a PDF to start asking…";
+  el.input.placeholder = has ? "Ask about your documents…" : "Upload a document to start asking…";
   el.send.disabled = busy || !has || !el.input.value.trim();
   el.scope.textContent = has ? `Searching ${plural(docs.length, "document")}` : "";
 }
@@ -976,6 +994,12 @@ el.turns.addEventListener("click", (e) => {
   if (nextChip) { ask(nextChip.dataset.q); return; }
   const retry = e.target.closest(".retry");
   if (retry) { ask(retry.dataset.q); return; }
+  const copy = e.target.closest(".copy-btn");
+  if (copy) {
+    const text = (turns[Number(copy.dataset.turn)].answer || "").replace(/\*\*(.+?)\*\*/g, "$1");
+    navigator.clipboard.writeText(text).then(() => toast("Answer copied"), () => toast("Couldn't copy — select the text instead", "warn"));
+    return;
+  }
   const btn = e.target.closest(".ev-btn");
   const turn = e.target.closest(".turn");
   if (!turn) return;

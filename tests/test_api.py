@@ -25,10 +25,10 @@ def test_ask_with_empty_library(client):
     assert body["sources"] == []
 
 
-def test_rejects_non_pdf(client):
-    res = upload(client, name="notes.txt", data=b"hello", mime="text/plain")
+def test_rejects_unsupported_file_types(client):
+    res = upload(client, name="photo.png", data=b"\x89PNG", mime="image/png")
     assert res.status_code == 400
-    assert "Only PDF" in res.json()["detail"]
+    assert res.json()["detail"].startswith("Unsupported file type")
 
 
 def test_rejects_corrupt_pdf(client):

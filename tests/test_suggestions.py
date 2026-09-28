@@ -71,7 +71,8 @@ def test_upload_returns_and_stores_questions(client):
 def test_questions_do_not_leak_into_answers(client):
     body = client.get("/api/ask", params={"q": "sick leave"}).json()
     assert "twelve days" in body["answer"]
-    assert all(set(s) == {"source", "chunk_index", "score", "preview"} for s in body["sources"])
+    keys = {"source", "chunk_index", "page_start", "page_end", "score", "preview"}
+    assert all(set(s) == keys for s in body["sources"])
 
 
 def test_deleting_a_document_removes_its_questions(client):

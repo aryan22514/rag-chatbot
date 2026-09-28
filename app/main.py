@@ -6,6 +6,14 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import router
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s  %(levelname)-7s %(name)s: %(message)s",
+    datefmt="%H:%M:%S",
+)
+for noisy in ("httpx", "httpcore", "chromadb"):
+    logging.getLogger(noisy).setLevel(logging.WARNING)
+
 app = FastAPI(title="RAG Chatbot")
 
 app.include_router(router, prefix="/api")

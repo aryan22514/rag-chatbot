@@ -1,5 +1,5 @@
+import hashlib
 import logging
-import shutil
 import tempfile
 from pathlib import Path
 from uuid import uuid4
@@ -7,7 +7,7 @@ from uuid import uuid4
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 
 from app.config import settings
-from app.core.document_processor import DocumentProcessor
+from app.core.document_processor import SUPPORTED_TYPES, DocumentProcessor
 from app.core.llm import LLM, RateLimitedError, is_rate_limited
 from app.core.rag_chain import RagChain
 from app.core.suggestions import QuestionSuggester
@@ -26,6 +26,7 @@ suggester = QuestionSuggester(llm)
 
 
 BUSY = "The AI service is busy right now. Please try again in a minute."
+UNSUPPORTED = "Unsupported file type. Upload a PDF, Word (.docx), or text (.txt, .md) file."
 
 
 def ai_error(error: Exception, doing: str) -> HTTPException:
@@ -43,44 +44,71 @@ def ai_error(error: Exception, doing: str) -> HTTPException:
 
 @router.post("/upload")
 async def upload_document(file: UploadFile = File(...)):
-    if not file.filename or not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Only PDF files are supported")
+    name = file.filename or ""
+    suffix = Path(name).suffix.lower()
+    if suffix not in SUPPORTED_TYPES:
+        raise HTTPException(status_code=400, detail=UNSUPPORTED)
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-        shutil.copyfileobj(file.file, tmp)
+    # Stream to a temp file, hashing as we go and stopping at the size limit
+    limit = int(settings.MAX_UPLOAD_MB * 1024 * 1024)
+    digest = hashlib.sha256()
+    size = 0
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         tmp_path = tmp.name
+        while block := await file.read(1024 * 1024):
+            size += len(block)
+            if size > limit:
+                break
+            digest.update(block)
+            tmp.write(block)
 
     try:
-        text = processor.extract_pdf(tmp_path)
-        chunks = processor.chunk_text(text, file.filename)
-    except Exception:
-        raise HTTPException(
-            status_code=400,
-            detail="Could not read this PDF. Is it damaged or password-protected?",
-        ) from None
+        if size > limit:
+            raise HTTPException(
+                status_code=413,
+                detail=f"This file is larger than {settings.MAX_UPLOAD_MB:g} MB. "
+                "Please upload a smaller file.",
+            )
+        content_hash = digest.hexdigest()
+        existing = store.find_by_hash(content_hash)
+        if existing:
+            raise HTTPException(
+                status_code=409,
+                detail=f"This document is already in your library as \u201c{existing}\u201d.",
+            )
+        try:
+            pages, paged = processor.extract(tmp_path)
+        except Exception:
+            raise HTTPException(
+                status_code=400,
+                detail="Could not read this file. Is it damaged or password-protected?",
+            ) from None
+        chunks = processor.chunk_pages(pages, name, paged)
     finally:
         Path(tmp_path).unlink(missing_ok=True)
 
     if not chunks:
         raise HTTPException(
             status_code=400,
-            detail="No text could be extracted. Is this a scanned PDF?",
+            detail="No text could be found in this file. "
+            "If it's a scanned PDF, it has no text layer to read.",
         )
 
     document_id = str(uuid4())
     try:
-        stored = store.add_chunks(chunks, document_id)
+        stored = store.add_chunks(chunks, document_id, content_hash)
     except Exception as e:
         raise ai_error(e, "processing your document") from e
 
-    questions = suggester.safe_generate([c.text for c in chunks], file.filename)
+    questions = suggester.safe_generate([c.text for c in chunks], name)
     if questions:
         store.set_questions(document_id, questions)
 
     return {
         "document_id": document_id,
-        "filename": file.filename,
-        "total_words": len(text.split()),
+        "filename": name,
+        "total_words": sum(len(page.split()) for page in pages),
+        "pages": len(pages) if paged else None,
         "chunks_stored": stored,
         "suggested_questions": questions,
     }

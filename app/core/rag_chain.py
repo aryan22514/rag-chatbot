@@ -17,6 +17,13 @@ your documents."
 CACHE_SIZE = 128
 
 
+def page_label(start: int | None, end: int | None) -> str | None:
+    """'page 2' or 'pages 2–3'; None when the format has no pages."""
+    if start is None:
+        return None
+    return f"page {start}" if start == end or end is None else f"pages {start}–{end}"
+
+
 class RagChain:
     def __init__(self, store: VectorStore | None = None, llm: LLM | None = None):
         self.store = store or VectorStore()
@@ -56,6 +63,8 @@ class RagChain:
                 {
                     "source": h["source"],
                     "chunk_index": h["chunk_index"],
+                    "page_start": h.get("page_start"),
+                    "page_end": h.get("page_end"),
                     "score": h["score"],
                     "preview": h["text"][:150],
                 }
@@ -73,8 +82,8 @@ class RagChain:
     def _build_context(self, hits: list[dict]) -> str:
         parts = []
         for i, hit in enumerate(hits, start=1):
-            parts.append(
-                f"[Source {i} — {hit['source']}, chunk {hit['chunk_index']}]\n"
-                f"{hit['text']}"
+            where = page_label(hit.get("page_start"), hit.get("page_end")) or (
+                f"chunk {hit['chunk_index']}"
             )
+            parts.append(f"[Source {i} — {hit['source']}, {where}]\n{hit['text']}")
         return "\n\n".join(parts)
