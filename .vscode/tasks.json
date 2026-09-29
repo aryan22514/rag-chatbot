@@ -8,14 +8,31 @@
       "command": "command -v docker >/dev/null && docker compose down >/dev/null 2>&1; lsof -ti tcp:8000 | xargs kill -9 2>/dev/null; sleep 1; .venv/bin/pip install -q -r requirements.txt && .venv/bin/uvicorn app.main:app --reload",
       "isBackground": true,
       "problemMatcher": [],
-      "group": { "kind": "build", "isDefault": true },
-      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true }
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
     },
     {
       "label": "Stop server",
       "type": "shell",
       "command": "lsof -ti tcp:8000 | xargs kill -9 2>/dev/null; echo 'Port 8000 is free.'",
       "problemMatcher": []
+    },
+    {
+      "label": "Push to GitHub",
+      "type": "shell",
+      "command": "git push -u origin main",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
     }
   ]
 }
