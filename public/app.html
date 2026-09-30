@@ -285,6 +285,7 @@
   .copy-btn { width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; color: var(--ink-3); flex: none; }
   .copy-btn:hover { background: var(--surface-2); color: var(--ink); }
   .inline-evidence { display: none; padding: 14px 16px 16px; border-top: 1px solid var(--line); flex-direction: column; gap: 10px; }
+  .inline-evidence.open { display: flex; animation: rise .25s ease-out; }
 
   .a.pending .a-body { display: flex; flex-direction: column; gap: 10px; }
   .pending-label { font-size: 13px; color: var(--ink-2); display: flex; align-items: center; gap: 8px; margin-bottom: 2px; }
@@ -363,7 +364,6 @@
   @media (max-width: 1180px) {
     .app { grid-template-columns: 272px minmax(0, 1fr); }
     .evidence { display: none; }
-    .inline-evidence.open { display: flex; }
   }
   @media (max-width: 760px) {
     body { font-size: 14.5px; }
@@ -531,7 +531,6 @@ let moreState = "idle"; // idle | loading | failed | exhausted — for "new set 
 let moreRequest = null;
 let docKey = "";
 let config = { public: false };
-const OFF_TOPIC = "What is the stock price of Tesla?";
 
 const REFRESH_ICON = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg>';
 const X_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>';
@@ -687,7 +686,6 @@ function loadMoreSuggestions() {
 }
 
 function renderChips() {
-  const offTopic = `<button class="chip" type="button" data-q="${OFF_TOPIC}">${OFF_TOPIC}<em>tests refusal</em></button>`;
   const open = unasked();
   const manyDocs = new Set(open.map((s) => s.source)).size > 1;
   const skeleton = [210, 260, 180].map((w) => `<span class="chip-skel" style="width:${w}px"></span>`).join("");
@@ -698,16 +696,16 @@ function renderChips() {
     el.tryLabel.textContent = "Reading your documents for questions…";
     el.chips.innerHTML = skeleton;
   } else if (!suggestions.length) {
-    el.tryLabel.textContent = "Try asking";
-    el.chips.innerHTML = offTopic;
+    el.tryLabel.textContent = "Ask anything about your documents";
+    el.chips.innerHTML = moreButton("Suggest questions");
   } else if (!open.length) {
     // Everything suggested has been asked: fetch a new set
     if (moreState === "idle") { loadMoreSuggestions(); return; }
     el.tryLabel.textContent = moreState === "loading" ? "Writing new questions…" : "You've asked every suggested question";
-    el.chips.innerHTML = moreState === "loading" ? skeleton : moreButton(moreState === "failed" ? "Try again" : "Try for more") + offTopic;
+    el.chips.innerHTML = moreState === "loading" ? skeleton : moreButton(moreState === "failed" ? "Try again" : "Try for more");
   } else {
     el.tryLabel.textContent = "Suggested from your documents";
-    el.chips.innerHTML = open.slice(0, 6).map((s) => chipHTML(s, manyDocs)).join("") + offTopic + moreButton();
+    el.chips.innerHTML = open.slice(0, 6).map((s) => chipHTML(s, manyDocs)).join("") + moreButton();
   }
 }
 
@@ -950,7 +948,7 @@ function answerHTML(t, i) {
     <div class="a-foot">
       <button class="ev-btn" type="button" data-turn="${i}">
         <span class="mini-meters" aria-hidden="true">${meters}</span>
-        ${t.refused ? "See what was searched" : `View ${plural(n, "source passage")}`}
+        <span class="ev-label" data-closed="${t.refused ? "See what was searched" : `View ${plural(n, "source passage")}`}" data-open="Hide ${t.refused ? "what was searched" : plural(n, "source passage")}">${t.refused ? "See what was searched" : `View ${plural(n, "source passage")}`}</span>
       </button>
       <span class="best mono">best match ${pct(t.sources[0].score)}</span>
       ${copyBtn}
@@ -1088,9 +1086,15 @@ el.turns.addEventListener("click", (e) => {
   if (!turn) return;
   const i = Number(turn.dataset.turn);
   if (turns[i] && !turns[i].pending) setActive(i);
-  if (btn && window.matchMedia("(max-width: 1180px)").matches) {
+  if (btn && !btn.classList.contains("retry")) {
     const box = document.getElementById("inline-" + i);
-    if (box) box.classList.toggle("open");
+    if (box) {
+      const open = box.classList.toggle("open");
+      const label = btn.querySelector(".ev-label");
+      if (label) label.textContent = open ? label.dataset.open : label.dataset.closed;
+      btn.setAttribute("aria-expanded", String(open));
+      if (open) box.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
   }
 });
 
