@@ -548,8 +548,12 @@ function fitCanvas(c) {
   const fit = () => {
     const r = c.getBoundingClientRect();
     const d = Math.min(window.devicePixelRatio || 1, 2);
-    c.width = Math.max(1, Math.round(r.width * d));
-    c.height = Math.max(1, Math.round(r.height * d));
+    const w = Math.max(1, Math.round(r.width * d)), h = Math.max(1, Math.round(r.height * d));
+    // Mobile browsers fire "resize" whenever the address bar slides in or out while
+    // scrolling. Resizing a canvas wipes it, which made the scenes flicker; skip no-op resizes.
+    if (w === c.width && h === c.height) return;
+    c.width = w;
+    c.height = h;
     ctx.setTransform(d, 0, 0, d, 0, 0);
     c.W = r.width; c.H = r.height;
   };
