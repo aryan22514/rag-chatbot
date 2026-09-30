@@ -27,7 +27,7 @@
     {
       "label": "Push to GitHub",
       "type": "shell",
-      "command": "git push -u origin main",
+      "command": "git push -u origin HEAD",
       "problemMatcher": [],
       "presentation": {
         "reveal": "always",
