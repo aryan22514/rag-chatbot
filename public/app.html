@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Groundwork · App</title>
 <link rel="stylesheet" href="fonts/fonts.css">
 <style>
@@ -63,7 +63,7 @@
     color: var(--ink); background: var(--ground);
     -webkit-font-smoothing: antialiased;
     display: grid; grid-template-rows: auto minmax(0, 1fr); grid-template-columns: minmax(0, 1fr);
-    height: 100dvh; overflow: hidden;
+    height: 100dvh; height: var(--app-h, 100dvh); overflow: hidden;
   }
   button { font: inherit; color: inherit; cursor: pointer; background: none; border: 0; }
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
@@ -381,7 +381,11 @@
     }
     .library.open { transform: none; }
     .thread { padding: 26px 16px 18px; }
-    .composer-wrap { padding: 10px 16px 12px; }
+    .composer-wrap { padding: 10px 16px calc(12px + env(safe-area-inset-bottom)); }
+    /* iPhone Safari zooms into any field under 16px when you tap it */
+    .composer textarea { font-size: 16px; }
+    .toasts { top: calc(64px + env(safe-area-inset-top)); bottom: auto; width: calc(100% - 32px); }
+    .topbar { padding-top: calc(10px + env(safe-area-inset-top)); }
     .pipeline { grid-template-columns: 1fr 1fr; }
     .pipeline li:nth-child(3) { border-left: 0; }
     .pipeline li:nth-child(3)::before { display: none; }
@@ -802,6 +806,7 @@ async function uploadOne(file) {
     }
     await refresh();
     renderChips();
+    closeLibrary(); // on phones the library is a drawer; get it out of the way once the file is ready
     toast(qs.length ? `${file.name} is ready — ${qs.length} suggested questions added` : `${file.name} is ready — ask away`);
     setUpload.timer = setTimeout(() => { if (!uploading) el.uploadCard.hidden = true; }, 6000);
   } catch (e) {
@@ -1145,6 +1150,18 @@ async function loadConfig() {
   $("#dropHint").textContent = `PDF, Word, .txt or .md · up to ${config.max_upload_mb} MB`;
   $("#privacyFeature").innerHTML = `<strong>Private to you</strong><p>Only this browser can see your files. They're cleared when the demo restarts, and text goes to Gemini only to embed and answer.</p>`;
   renderLibrary();
+}
+
+/* Phones: size the app to the visible area, so the question box stays above
+   the on-screen keyboard and the browser's toolbars (iOS Safari in particular) */
+if (window.visualViewport) {
+  const fitViewport = () => {
+    if (visualViewport.scale > 1.01) return; // pinch-zoomed: leave the layout alone
+    document.documentElement.style.setProperty("--app-h", Math.round(visualViewport.height) + "px");
+    if (window.scrollY) window.scrollTo(0, 0);
+  };
+  visualViewport.addEventListener("resize", fitViewport);
+  fitViewport();
 }
 
 /* ───── start ───── */
