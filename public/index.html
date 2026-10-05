@@ -290,7 +290,12 @@
   .reduced .stage { position: relative; height: auto; overflow: visible; }
   .reduced .stage canvas { position: relative; height: 70vh; }
   .reduced .caps { position: relative; left: auto; top: auto; transform: none; width: auto; height: auto; max-width: 1180px; margin: 0 auto; padding: 0 24px 60px; display: grid; gap: 36px; }
-  .reduced .cap { position: static; opacity: 1 !important; transform: none !important; }
+  .reduced .cap { position: static; transform: none !important; }
+  /* Reduce Motion: nothing moves or pins, but each picture and caption fades in softly as you reach it
+     (opacity only, like Apple's site does for these visitors) */
+  .reduced .rv { transform: none !important; transition: opacity .9s ease !important; }
+  .reduced .stage canvas, .reduced .cap { opacity: 0 !important; transition: opacity .9s ease !important; }
+  .reduced .stage canvas.in, .reduced .cap.in { opacity: 1 !important; }
   .reduced .shade, .reduced .readout { display: none; }
   .reduced .answer-stage { padding-block: 12vh; }
   .reduced .film-stage { padding-block: 12vh; }
@@ -1085,6 +1090,7 @@ const io = new IntersectionObserver((entries) => {
   });
 }, { threshold: .18, rootMargin: "0px 0px -8% 0px" });
 $$(".rv").forEach((el) => io.observe(el));
+if (REDUCED) $$(".stage canvas, .cap").forEach((el) => io.observe(el));
 
 /* ═════════ live: talks to your running server ═════════ */
 const live = {
