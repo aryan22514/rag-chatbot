@@ -34,8 +34,13 @@
   body {
     background: var(--bg); color: var(--ink);
     font-family: var(--sans); font-size: 17px; line-height: 1.55;
-    -webkit-font-smoothing: antialiased; overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+    /* "clip", not "hidden": on iPhone Safari, overflow-x: hidden on <body> turns it into its own
+       scroll box, which silently breaks position: sticky. Sticky is what pins each scene while you
+       scroll, so on phones the animations just scrolled past instead of playing. */
+    overflow-x: clip;
   }
+  @supports not (overflow: clip) { html, body { overflow-x: hidden; } }
   a { color: inherit; }
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
   .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
@@ -285,7 +290,12 @@
   .reduced .stage { position: relative; height: auto; overflow: visible; }
   .reduced .stage canvas { position: relative; height: 70vh; }
   .reduced .caps { position: relative; left: auto; top: auto; transform: none; width: auto; height: auto; max-width: 1180px; margin: 0 auto; padding: 0 24px 60px; display: grid; gap: 36px; }
-  .reduced .cap { position: static; opacity: 1 !important; transform: none !important; }
+  .reduced .cap { position: static; transform: none !important; }
+  /* Reduce Motion: nothing moves or pins, but each picture and caption fades in softly as you reach it
+     (opacity only, like Apple's site does for these visitors) */
+  .reduced .rv { transform: none !important; transition: opacity .9s ease !important; }
+  .reduced .stage canvas, .reduced .cap { opacity: 0 !important; transition: opacity .9s ease !important; }
+  .reduced .stage canvas.in, .reduced .cap.in { opacity: 1 !important; }
   .reduced .shade, .reduced .readout { display: none; }
   .reduced .answer-stage { padding-block: 12vh; }
   .reduced .film-stage { padding-block: 12vh; }
@@ -597,6 +607,11 @@ const drawHero = (() => {
   const ps = Array.from({ length: N }, () => ({ x: r(), y: r(), z: .25 + r() * .75, w: WORDS[Math.floor(r() * WORDS.length)], hl: 0 }));
   let mx = 0, my = 0, tx = 0, ty = 0, last = 0, next = 900;
   addEventListener("pointermove", (e) => { tx = e.clientX / innerWidth - .5; ty = e.clientY / innerHeight - .5; });
+  // Phones have no mouse to follow, so the words sway on their own and react to scrolling instead
+  if (matchMedia("(hover: none)").matches) {
+    const sway = () => { const s = performance.now() / 4000; tx = Math.sin(s) * .35; ty = Math.cos(s * .8) * .2 + Math.min(scrollY / innerHeight, 1) * .3; };
+    setInterval(sway, 120);
+  }
 
   return (t, dt) => {
     const W = c.W, H = c.H;
@@ -1002,7 +1017,8 @@ const demoVideo = $("#demoVideo");
 if (!REDUCED) {
   new IntersectionObserver((entries) => {
     entries.forEach((en) => {
-      if (en.isIntersecting) demoVideo.play().catch(() => {});
+      // Autoplay can be blocked (e.g. iPhone Low Power Mode): show the player controls instead
+      if (en.isIntersecting) demoVideo.play().catch(() => { demoVideo.controls = true; });
       else demoVideo.pause();
     });
   }, { threshold: .35 }).observe(demoVideo);
@@ -1074,6 +1090,7 @@ const io = new IntersectionObserver((entries) => {
   });
 }, { threshold: .18, rootMargin: "0px 0px -8% 0px" });
 $$(".rv").forEach((el) => io.observe(el));
+if (REDUCED) $$(".stage canvas, .cap").forEach((el) => io.observe(el));
 
 /* ═════════ live: talks to your running server ═════════ */
 const live = {
